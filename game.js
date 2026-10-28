@@ -48,9 +48,11 @@ const camera = new THREE.OrthographicCamera(-1, 1, 1, -1, 0.1, 200);
 const CAM_OFFSET = new THREE.Vector3(14, 17, 14);
 const camTarget = new THREE.Vector3(-2.8, 0, 2.6);
 
+// Le dimensioni si leggono dal canvas (che il CSS stende su tutto lo schermo):
+// nell'app installata su iPhone innerHeight può essere più basso dello schermo vero.
 function resize() {
-  const w = innerWidth, h = innerHeight, aspect = w / h;
-  renderer.setSize(w, h);
+  const w = canvas.clientWidth || innerWidth, h = canvas.clientHeight || innerHeight, aspect = w / h;
+  renderer.setSize(w, h, false);
   // Il lato corto dello schermo mostra ~10 unità di mondo (un po' di più in verticale)
   const viewH = aspect < 1 ? 13.5 / aspect : 9.5;
   camera.top = viewH / 2; camera.bottom = -viewH / 2;
@@ -58,6 +60,8 @@ function resize() {
   camera.updateProjectionMatrix();
 }
 addEventListener('resize', resize);
+addEventListener('orientationchange', () => setTimeout(resize, 300));
+if (window.ResizeObserver) new ResizeObserver(resize).observe(canvas);
 resize();
 
 scene.add(new THREE.HemisphereLight(0xffffff, 0x6e9a4a, 2.1));
