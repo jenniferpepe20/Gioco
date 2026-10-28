@@ -20,6 +20,7 @@
   <div id="hud">
     <div id="logo">Flower<span>Tycoon</span></div>
     <div id="money"><i class="bill"></i><b id="moneyText">0</b></div>
+    <div id="stars"></div>
     <div id="hint"></div>
     <button id="mute" aria-label="Audio">🔊</button>
     <button id="menuBtn" aria-label="Menu">⚙️</button>
@@ -32,7 +33,16 @@
       <h2>Pausa</h2>
       <button id="resume" class="big">Continua</button>
       <button id="reset" class="small danger">Ricomincia da zero</button>
-      <p class="version">Versione 2.1</p>
+      <p class="version">Versione 3</p>
+    </div>
+  </div>
+
+  <div id="win" class="overlay hidden">
+    <div class="panel">
+      <div class="title">Giardino<span>completato!</span></div>
+      <p class="winStars" id="winStars">⭐</p>
+      <p>Hai aperto tutti gli spiazzali!<br>Ricomincia con un giardino nuovo:<br>ogni vendita ti farà guadagnare <b id="winBonus">+50%</b>.</p>
+      <button id="newGarden" class="big">NUOVO GIARDINO</button>
     </div>
   </div>
 
@@ -42,7 +52,7 @@
       <p>Raccogli i fiori, vendili ai clienti,<br>incassa i soldi e fai crescere il tuo giardino!</p>
       <button id="play" class="big">GIOCA</button>
       <p class="tip">Trascina il dito per muoverti</p>
-      <p class="version">Versione 2.1</p>
+      <p class="version">Versione 3</p>
     </div>
   </div>
 

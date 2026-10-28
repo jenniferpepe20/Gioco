@@ -22,7 +22,7 @@ const fmt = (n) => n >= 1e6 ? (n / 1e6).toFixed(1).replace('.0', '') + 'M'
 // ---------------------------------------------------------------------
 const AREA_GAP = 19.4;
 const czOf = (k) => -AREA_GAP * k;
-const AREA_PRODUCTS = ['rose', 'daisy', 'straw'];
+const AREA_PRODUCTS = ['rose', 'daisy', 'straw', 'tulip', 'sun', 'blue'];
 const COUNTER_SIZE = { w: 3.2, d: 1.2 };
 const BED_SLOTS = [{ x: -5.5, dz: 1.3 }, { x: -5.5, dz: -4.9 }];
 const bedPos = (k, s) => ({ x: BED_SLOTS[s].x, z: czOf(k) + BED_SLOTS[s].dz });
@@ -139,6 +139,29 @@ const STRAW_ITEM = partsGeo([
   ...[-0.18, 0, 0.18].flatMap((x) => [-0.09, 0.09].map((z) => (
     { g: new THREE.IcosahedronGeometry(0.075, 0), m: M4(x + rand(-0.02, 0.02), 0.17, z), c: 0xe8283c }))),
 ]);
+const TULIP_UP = bouquetGeo(0xfff3d6, 0xff8a3d,
+  [[0, 0.66, 0, 0xe8283c], [0.11, 0.58, 0.08, 0xffb21f], [-0.11, 0.58, 0.06, 0xff6b2c], [0.02, 0.58, -0.12, 0xb84ad9]]
+    .flatMap(([x, y, z, c]) => [
+      { g: new THREE.CylinderGeometry(0.1, 0.06, 0.18, 6), m: M4(x, y, z), c },
+      { g: new THREE.ConeGeometry(0.1, 0.08, 6), m: M4(x, y + 0.12, z), c },
+    ]));
+const SUN_UP = bouquetGeo(0xd9b382, 0x3f9e35,
+  [[0, 0.72, 0.02, -0.5], [0.13, 0.6, 0.06, -0.3], [-0.13, 0.6, 0.0, -0.3]].flatMap(([x, y, z, t]) => [
+    { g: new THREE.CylinderGeometry(0.17, 0.17, 0.03, 12), m: M4(x, y, z, t), c: 0xffcc1a },
+    { g: new THREE.CylinderGeometry(0.08, 0.08, 0.05, 10), m: M4(x, y + 0.01, z + 0.01, t), c: 0x6b3a12 },
+  ]));
+const BLUE_PLANT = partsGeo([
+  { g: new THREE.IcosahedronGeometry(0.24, 0), m: M4(0, 0.28, 0, 0, 0, 0, 1, 0.8, 1), c: 0x3c8f3a },
+  { g: new THREE.IcosahedronGeometry(0.18, 0), m: M4(0.12, 0.42, 0.05, 0, 1, 0, 1, 0.8, 1), c: 0x4aa244 },
+  ...[[0.2, 0.3, 0.12], [-0.18, 0.28, 0.16], [0.05, 0.36, 0.22], [-0.1, 0.5, 0.05], [0.18, 0.46, -0.1], [-0.2, 0.36, -0.12]]
+    .map(([x, y, z]) => ({ g: new THREE.IcosahedronGeometry(0.06, 0), m: M4(x, y, z), c: 0x3b4fb8 })),
+]);
+const BLUE_ITEM = partsGeo([
+  { g: new THREE.BoxGeometry(0.5, 0.12, 0.36), m: M4(0, 0.06, 0), c: 0x6fb7e8 },
+  { g: new THREE.BoxGeometry(0.52, 0.03, 0.38), m: M4(0, 0.12, 0), c: 0x4f97c8 },
+  ...[-0.16, -0.05, 0.06, 0.17].flatMap((x) => [-0.1, 0, 0.1].map((z) => (
+    { g: new THREE.IcosahedronGeometry(0.05, 0), m: M4(x, 0.16, z + rand(-0.02, 0.02)), c: 0x3b4fb8 }))),
+]);
 // Un mazzo "sdraiato" per le pile: lungo l'asse x, base a y=0
 const laid = (g) => g.clone().rotateZ(Math.PI / 2).translate(0.37, 0.21, 0);
 
@@ -146,6 +169,9 @@ const PRODUCTS = {
   rose: { name: 'Rose', price: 2, plant: ROSE_UP, item: laid(ROSE_UP), color: '#ff4f84' },
   daisy: { name: 'Margherite', price: 3, plant: DAISY_UP, item: laid(DAISY_UP), color: '#ffffff' },
   straw: { name: 'Fragole', price: 5, plant: STRAW_PLANT, item: STRAW_ITEM, color: '#e8283c' },
+  tulip: { name: 'Tulipani', price: 8, plant: TULIP_UP, item: laid(TULIP_UP), color: '#ff6b2c' },
+  sun: { name: 'Girasoli', price: 12, plant: SUN_UP, item: laid(SUN_UP), color: '#ffcc1a' },
+  blue: { name: 'Mirtilli', price: 18, plant: BLUE_PLANT, item: BLUE_ITEM, color: '#3b4fb8' },
 };
 
 // Mazzetto di banconote
@@ -223,7 +249,14 @@ function roundRect(ctx, x, y, w, h, r) {
 function drawProduct(ctx, product, x, y, s) {
   ctx.save();
   ctx.translate(x, y); ctx.scale(s, s);
-  if (product === 'straw') {
+  if (product === 'blue') {
+    ctx.strokeStyle = '#3c9a33'; ctx.lineWidth = 4;
+    ctx.beginPath(); ctx.moveTo(0, -22); ctx.quadraticCurveTo(4, -6, -2, 4); ctx.stroke();
+    for (const [px, py, r] of [[-9, 4, 9], [9, 2, 9], [0, 14, 9.5], [-2, -8, 7]]) {
+      ctx.fillStyle = '#3b4fb8'; ctx.beginPath(); ctx.arc(px, py, r, 0, TAU); ctx.fill();
+      ctx.fillStyle = '#8fa2ff'; ctx.beginPath(); ctx.arc(px - r * 0.35, py - r * 0.35, r * 0.25, 0, TAU); ctx.fill();
+    }
+  } else if (product === 'straw') {
     ctx.fillStyle = '#e8283c';
     ctx.beginPath();
     ctx.moveTo(0, 20); ctx.bezierCurveTo(-22, 2, -18, -14, 0, -12); ctx.bezierCurveTo(18, -14, 22, 2, 0, 20);
@@ -238,7 +271,21 @@ function drawProduct(ctx, product, x, y, s) {
     ctx.beginPath(); ctx.moveTo(0, 2); ctx.quadraticCurveTo(-3, 18, 2, 30); ctx.stroke();
     ctx.fillStyle = '#4fb33e';
     ctx.beginPath(); ctx.ellipse(-9, 20, 9, 4, -0.7, 0, TAU); ctx.fill();
-    if (product === 'daisy') {
+    if (product === 'sun') {
+      ctx.fillStyle = '#ffcc1a';
+      for (let i = 0; i < 12; i++) {
+        const a = i / 12 * TAU;
+        ctx.beginPath(); ctx.ellipse(Math.cos(a) * 11, -6 + Math.sin(a) * 11, 7, 3.4, a, 0, TAU); ctx.fill();
+      }
+      ctx.fillStyle = '#6b3a12';
+      ctx.beginPath(); ctx.arc(0, -6, 8, 0, TAU); ctx.fill();
+    } else if (product === 'rose') {
+      ctx.fillStyle = '#e8336b';
+      ctx.beginPath(); ctx.arc(0, -6, 13, 0, TAU); ctx.fill();
+      ctx.strokeStyle = '#a3123f'; ctx.lineWidth = 2.5;
+      ctx.beginPath(); ctx.arc(0, -6, 8, 0.3, 5.2); ctx.stroke();
+      ctx.beginPath(); ctx.arc(1, -6, 3.5, 2, 7.5); ctx.stroke();
+    } else if (product === 'daisy') {
       ctx.fillStyle = '#ffffff';
       for (let i = 0; i < 9; i++) {
         const a = i / 9 * TAU;
@@ -247,13 +294,25 @@ function drawProduct(ctx, product, x, y, s) {
       ctx.fillStyle = '#ffcf2e';
       ctx.beginPath(); ctx.arc(0, -6, 6, 0, TAU); ctx.fill();
     } else {
-      ctx.fillStyle = '#ff4f84';
+      ctx.fillStyle = '#ff6b2c';
       ctx.beginPath();
       ctx.moveTo(-12, -14); ctx.lineTo(-6, -4); ctx.lineTo(0, -16); ctx.lineTo(6, -4); ctx.lineTo(12, -14);
       ctx.quadraticCurveTo(14, 6, 0, 6); ctx.quadraticCurveTo(-14, 6, -12, -14);
       ctx.fill();
     }
   }
+  ctx.restore();
+}
+function drawStar(ctx, x, y, r) {
+  ctx.save();
+  ctx.beginPath();
+  for (let i = 0; i < 10; i++) {
+    const a = -Math.PI / 2 + i * Math.PI / 5, rr = i % 2 ? r * 0.45 : r;
+    ctx.lineTo(x + Math.cos(a) * rr, y + Math.sin(a) * rr);
+  }
+  ctx.closePath();
+  ctx.fillStyle = '#ffd23f'; ctx.fill();
+  ctx.lineWidth = 3; ctx.strokeStyle = '#c98a00'; ctx.stroke();
   ctx.restore();
 }
 function drawBillIcon(ctx, x, y, s) {
@@ -278,10 +337,10 @@ const grassTex = canvasTex(256, 256, (ctx, w, h) => {
   }
 });
 grassTex.wrapS = grassTex.wrapT = THREE.RepeatWrapping;
-grassTex.repeat.set(36, 36);
-const ground = new THREE.Mesh(new THREE.PlaneGeometry(180, 180), new THREE.MeshLambertMaterial({ map: grassTex }));
+grassTex.repeat.set(60, 60);
+const ground = new THREE.Mesh(new THREE.PlaneGeometry(300, 300), new THREE.MeshLambertMaterial({ map: grassTex }));
 ground.rotation.x = -Math.PI / 2;
-ground.position.z = -20;
+ground.position.z = -50;
 ground.receiveShadow = true;
 scene.add(ground);
 
@@ -644,10 +703,11 @@ function initAudio() {
 //  Stato di gioco e salvataggio
 // ---------------------------------------------------------------------
 const state = {
-  money: 0, stage: 0,
+  money: 0, stage: 0, stars: 0, legacyBonus: 0,
   capacity: 10, priceBonus: 0, speed: 5.2, gardenerCap: 6,
 };
-const priceOf = (product) => PRODUCTS[product].price + state.priceBonus;
+// Ogni stella (giardino completato) fa guadagnare il 50% in più
+const priceOf = (product) => Math.round((PRODUCTS[product].price + state.priceBonus) * (1 + 0.5 * state.stars));
 let loaded = null;
 try { loaded = JSON.parse(localStorage.getItem(SAVE_KEY)); } catch { }
 
@@ -655,6 +715,7 @@ function save() {
   try {
     localStorage.setItem(SAVE_KEY, JSON.stringify({
       money: state.money, stage: state.stage, padPaid: currentPad ? currentPad.paid : 0,
+      stars: state.stars, legacyBonus: state.legacyBonus,
     }));
   } catch { }
 }
@@ -732,7 +793,7 @@ function buildArea(k, instant) {
   scene.add(g);
   const { w, d } = COUNTER_SIZE;
   box(w, 0.95, d, 0xece6d6, 0, 0.475, 0, g);
-  box(w + 0.2, 0.14, d + 0.2, [0x3d63c9, 0xf0a23a, 0xd94a6a][k], 0, 1.0, 0, g);
+  box(w + 0.2, 0.14, d + 0.2, [0x3d63c9, 0xf0a23a, 0xd94a6a, 0xff7a3d, 0x2fa84f, 0x6a5acd][k], 0, 1.0, 0, g);
   box(w + 0.22, 0.06, 0.08, 0x2f4ea3, 0, 0.92, -d / 2 - 0.1, g);
   const laptop = new THREE.Group();
   laptop.position.set(0.95, 1.07, -0.1);
@@ -899,7 +960,7 @@ function hireGardener(bed, instant) {
 }
 function hireCashier(A, px, pz, instant) {
   const ch = makeCharacter({
-    skin: pick(SKINS), shirt: [0x9b59b6, 0x2f7fd0, 0xe2455f][A.k], pants: 0x2c3e50, hair: pick(HAIRS),
+    skin: pick(SKINS), shirt: [0x9b59b6, 0x2f7fd0, 0xe2455f, 0xff8a3d, 0x2e7d32, 0x5b6fe0][A.k], pants: 0x2c3e50, hair: pick(HAIRS),
     hairStyle: 'bun', apron: 0xffffff,
   });
   ch.group.position.set(instant ? A.post.x : px, 0, instant ? A.post.z : pz);
@@ -1147,13 +1208,21 @@ const UPGRADES = [
   U.plow(2, 1, 4300),
   U.shop(2, 'Braccia forti', '+10 in braccio', 5000, () => { state.capacity += 10; }),
   { name: 'Fontana', desc: 'il giardino più bello!', cost: 6000, x: 4.6, z: 5.6, apply: (i) => buildFountain(4.6, 5.6, i) },
+  // Dal quarto spiazzale in poi: stessa sequenza, prezzi più alti
+  ...areaUpgrades(3, 8000, ['Scarpe veloci', 'corri più veloce', () => { state.speed *= 1.15; }]),
+  ...areaUpgrades(4, 26000, ['Braccia forti', '+10 in braccio', () => { state.capacity += 10; }]),
+  ...areaUpgrades(5, 72000, ['Cesti grandi', 'aiutanti +4', () => { state.gardenerCap += 4; }]),
+  // Finale: si ricomincia con una stella in più
+  { name: 'Nuovo giardino', desc: 'guadagni +50%', star: true, cost: 250000, ...shopPos(5), apply: () => completeGarden() },
 ];
-function getUpgrade(i) {
-  if (i < UPGRADES.length) return UPGRADES[i];
-  const k = i - UPGRADES.length;
-  return U.shop(AREA_PRODUCTS.length - 1, 'Prezzi più alti', 'tutto costa +$1',
-    Math.round(7000 * Math.pow(1.5, k) / 10) * 10, () => { state.priceBonus += 1; });
+function areaUpgrades(k, base, [shopName, shopDesc, shopFn]) {
+  const c = (f) => Math.round(base * f / 100) * 100;
+  return [
+    U.area(k, c(1)), U.bed(k, 1, c(1.18)), U.cashier(k, c(1.36)), U.gardener(k, 0, c(1.6)),
+    U.plow(k, 0, c(1.85)), U.shop(k, shopName, shopDesc, c(2.1), shopFn), U.gardener(k, 1, c(2.35)), U.plow(k, 1, c(2.7)),
+  ];
 }
+const getUpgrade = (i) => UPGRADES[i] || null;
 
 let fountain = null;
 function buildFountain(x, z, instant) {
@@ -1208,6 +1277,7 @@ function drawPad(ctx, w, h, up, remaining) {
       drawProduct(ctx, up.icon, w / 2 - tw / 2 - 6, 92, 0.65);
     }
   }
+  if (up.star) drawStar(ctx, w - 40, 40, 22);
   drawBillIcon(ctx, 70, 160, 1.3);
   ctx.font = '900 52px "Trebuchet MS", Arial, sans-serif';
   ctx.fillStyle = '#ffffff';
@@ -1218,6 +1288,7 @@ function drawPad(ctx, w, h, up, remaining) {
 }
 function spawnPad(index, paid = 0) {
   const up = getUpgrade(index);
+  if (!up) return;
   const c = document.createElement('canvas');
   c.width = c.height = 256;
   const tex = new THREE.CanvasTexture(c);
@@ -1244,9 +1315,10 @@ function completePad() {
   p.mesh.material.dispose();
   p.mesh.geometry.dispose();
   currentPad = null;
-  p.up.apply(false);
   burst(p.up.x, p.up.z, 60);
   sfx('buy');
+  if (p.up.star) { p.up.apply(false); return; }
+  p.up.apply(false);
   state.stage++;
   save();
   setTimeout(() => spawnPad(state.stage), 700);
@@ -1501,6 +1573,25 @@ function updateMoney(bump) {
     moneyEl.classList.add('bump');
   }
 }
+const starsEl = document.getElementById('stars');
+function updateStars() {
+  starsEl.textContent = '⭐ ' + state.stars;
+  starsEl.classList.toggle('show', state.stars > 0);
+}
+// Giardino completato: si ricomincia da zero con una stella in più
+function completeGarden() {
+  state.stars++;
+  paused = true;
+  document.getElementById('winStars').textContent = '⭐'.repeat(Math.min(state.stars, 10)) + (state.stars > 10 ? ' ×' + state.stars : '');
+  document.getElementById('winBonus').textContent = '+' + state.stars * 50 + '%';
+  document.getElementById('win').classList.remove('hidden');
+  burst(player.group.position.x, player.group.position.z, 120);
+  resetting = true;
+  try {
+    localStorage.setItem(SAVE_KEY, JSON.stringify({ money: 0, stage: 0, padPaid: 0, stars: state.stars, legacyBonus: 0 }));
+  } catch { }
+}
+document.getElementById('newGarden').addEventListener('click', () => location.reload());
 const muteBtn = document.getElementById('mute');
 const refreshMute = () => { muteBtn.textContent = muted ? '🔇' : '🔊'; };
 refreshMute();
@@ -1533,11 +1624,24 @@ addEventListener('pagehide', () => { if (!resetting) save(); });
 //  Avvio: costruisce il mondo dal salvataggio
 // ---------------------------------------------------------------------
 buildArea(0, true);
+const FOUNTAIN_STAGE = UPGRADES.findIndex((u) => u.name === 'Fontana') + 1;
 if (loaded && typeof loaded.stage === 'number') {
   state.money = Math.max(0, loaded.money | 0);
-  for (let i = 0; i < loaded.stage; i++) getUpgrade(i).apply(true);
-  state.stage = loaded.stage;
+  state.stars = Math.max(0, loaded.stars | 0);
+  state.legacyBonus = Math.max(0, loaded.legacyBonus | 0);
+  let stage = loaded.stage;
+  // Salvataggi della versione 2.1: dopo la fontana c'erano solo i "Prezzi più alti" infiniti.
+  // Li teniamo come bonus e si riparte dal quarto spiazzale.
+  if (loaded.legacyBonus === undefined && stage > FOUNTAIN_STAGE) {
+    state.legacyBonus = stage - FOUNTAIN_STAGE;
+    stage = FOUNTAIN_STAGE;
+  }
+  state.priceBonus += state.legacyBonus;
+  stage = Math.min(stage, UPGRADES.length - 1);
+  for (let i = 0; i < stage; i++) getUpgrade(i).apply(true);
+  state.stage = stage;
 }
+updateStars();
 spawnPad(state.stage, loaded ? Math.max(0, loaded.padPaid | 0) : 0);
 updateMoney();
 setInterval(() => { if (!paused) save(); }, 4000);

@@ -24,6 +24,13 @@ html, body {
   background: rgba(30, 34, 40, .75); border-radius: 22px; color: #fff;
   font-size: 28px; font-weight: 900; min-width: 130px; justify-content: space-between; gap: 10px;
 }
+#stars {
+  position: absolute; right: calc(14px + env(safe-area-inset-right)); top: calc(62px + env(safe-area-inset-top));
+  background: rgba(30, 34, 40, .75); color: #ffd23f; font-weight: 900; font-size: 18px;
+  padding: 4px 12px; border-radius: 14px; display: none;
+}
+#stars.show { display: block; }
+.winStars { font-size: 34px; margin: 4px 0; letter-spacing: 2px; }
 #money.bump { animation: bump .18s ease-out; }
 @keyframes bump { 50% { transform: scale(1.12); } }
 .bill {

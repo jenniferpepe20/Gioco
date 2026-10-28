@@ -22,6 +22,9 @@ Il giardino è diviso in **spiazzali**, ognuno con il suo prodotto, il suo banco
 1. 🌹 **Rose** ($2): lo spiazzale iniziale
 2. 🌼 **Margherite** ($3): si apre il cancello in alto
 3. 🍓 **Fragole** ($5): vendute in cassette
+4. 🌷 **Tulipani** ($8)
+5. 🌻 **Girasoli** ($12)
+6. 🫐 **Mirtilli** ($18): vendute in cassette
 
 In ogni spiazzale sblocchi la seconda aiuola e la **cassiera**, poi per **ogni aiuola**:
 - il **giardiniere**, che raccoglie solo quell'aiuola e porta tutto al bancone;
@@ -30,7 +33,13 @@ In ogni spiazzale sblocchi la seconda aiuola e la **cassiera**, poi per **ogni a
 Più aiutanti lavorano in uno spiazzale, più clienti arrivano, quindi c'è sempre
 qualcosa da fare: aiutare dove i clienti aspettano, raccogliere i soldi e aprire
 lo spiazzale successivo. Ci sono anche i potenziamenti (braccia forti, scarpe veloci,
-carta regalo, cesti grandi) e alla fine la fontana.
+carta regalo, cesti grandi) e la fontana.
+
+### Nuovo giardino ⭐
+
+Quando hai aperto tutti gli spiazzali compare l'ultima pedana, **Nuovo giardino**.
+Si ricomincia da capo, ma con una stella in più: ogni stella fa guadagnare
+il **50% in più** su ogni vendita, quindi ogni giro è più veloce del precedente.
 
 I progressi si salvano da soli sul dispositivo.
 
