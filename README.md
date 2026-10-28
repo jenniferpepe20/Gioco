@@ -13,8 +13,24 @@ soldi per far crescere il tuo giardino.
 - **Vendi**: stai sulla pedana **VENDI**: lasci i fiori sul bancone e servi il cliente
   in testa alla fila. La nuvoletta 🌷 indica quanti fiori vuole.
 - **Incassa**: passa sopra la pila di banconote accanto al bancone.
-- **Sblocca**: stai sopra le pedane azzurre con il prezzo per pagarle un po' alla volta:
-  nuove aiuole, cassiera, giardinieri, potenziamenti e la fontana.
+- **Sblocca**: stai sopra le pedane azzurre con il prezzo per pagarle un po' alla volta.
+
+### Progressione
+
+Il giardino è diviso in **spiazzali**, ognuno con il suo prodotto, il suo bancone e la sua fila:
+
+1. 🌹 **Rose** ($2): lo spiazzale iniziale
+2. 🌼 **Margherite** ($3): si apre il cancello in alto
+3. 🍓 **Fragole** ($5): vendute in cassette
+
+In ogni spiazzale sblocchi la seconda aiuola e la **cassiera**, poi per **ogni aiuola**:
+- il **giardiniere**, che raccoglie solo quell'aiuola e porta tutto al bancone;
+- l'**aratro**, un trattorino che dà raccolto doppio e fa ricrescere più in fretta.
+
+Più aiutanti lavorano in uno spiazzale, più clienti arrivano, quindi c'è sempre
+qualcosa da fare: aiutare dove i clienti aspettano, raccogliere i soldi e aprire
+lo spiazzale successivo. Ci sono anche i potenziamenti (braccia forti, scarpe veloci,
+carta regalo, cesti grandi) e alla fine la fontana.
 
 I progressi si salvano da soli sul dispositivo.
 
@@ -49,5 +65,6 @@ Per pubblicarlo su App Store / Google Play si può impacchettare la stessa carte
 | `manifest.json`, `sw.js`, `icons/` | installazione come app e modalità offline |
 | `vendor/three.module.min.js` | [three.js](https://threejs.org) r170 (licenza MIT, vedi `vendor/THREE_LICENSE`) |
 
-Per bilanciare il gioco, modifica la lista `UPGRADES` in `game.js` (nomi, prezzi e posizioni
-degli sblocchi) e i valori iniziali in `state` (capacità, prezzo dei fiori, velocità).
+Per bilanciare il gioco, modifica in `game.js` la lista `UPGRADES` (ordine e prezzi degli sblocchi),
+`PRODUCTS` (prezzo di ogni prodotto), `spawnInterval` (quanti clienti arrivano) e i valori
+iniziali in `state` (capacità, velocità).

@@ -4,7 +4,7 @@ import * as THREE from './vendor/three.module.min.js';
 //  Flower Tycoon — raccogli, vendi, incassa, espandi.
 // =====================================================================
 
-const SAVE_KEY = 'flowerTycoon.v1';
+const SAVE_KEY = 'flowerTycoon.v2';
 const TAU = Math.PI * 2;
 const rand = (a, b) => a + Math.random() * (b - a);
 const randInt = (a, b) => Math.floor(rand(a, b + 1));
@@ -15,19 +15,22 @@ const fmt = (n) => n >= 1e6 ? (n / 1e6).toFixed(1).replace('.0', '') + 'M'
   : n >= 1e4 ? (n / 1e3).toFixed(1).replace('.0', '') + 'K' : String(Math.floor(n));
 
 // ---------------------------------------------------------------------
-//  Layout del giardino (coordinate a terra: x, z)
+//  Layout: il giardino è fatto di "spiazzali" uno dopo l'altro lungo -z.
+//  Ogni spiazzale ha un prodotto, un bancone, una fila di clienti e 2 aiuole.
+//  Il venditore sta davanti al bancone (lato +z, verso la camera),
+//  i clienti dietro e la fila prosegue verso destra fino all'ingresso.
 // ---------------------------------------------------------------------
-// Il venditore sta davanti al bancone (lato +z, verso la camera),
-// i clienti dietro e la fila prosegue verso destra fino all'ingresso.
-const COUNTER = { x: 0, z: 0, w: 3.2, d: 1.2, rot: 0 };
-const SELL = { x: -0.3, z: 1.75, r: 1.15 };
-const CASH = { x: 3.4, z: 2.0, r: 1.5 };
-const GARDENER_DROP = { x: -1.9, z: 1.5 };
-const CASHIER_POST = { x: 0.3, z: 1.15 };
-const QUEUE = { x: -0.2, z: -1.45, step: 0.95, max: 8 };
-const EXIT = [{ x: -0.2, z: -2.9 }, { x: 16, z: -2.9 }];
+const AREA_GAP = 19.4;
+const czOf = (k) => -AREA_GAP * k;
+const AREA_PRODUCTS = ['rose', 'daisy', 'straw'];
+const COUNTER_SIZE = { w: 3.2, d: 1.2 };
+const BED_SLOTS = [{ x: -5.5, dz: 1.3 }, { x: -5.5, dz: -4.9 }];
+const bedPos = (k, s) => ({ x: BED_SLOTS[s].x, z: czOf(k) + BED_SLOTS[s].dz });
+const bedPadPos = (k, s) => ({ x: BED_SLOTS[s].x - 3.2, z: czOf(k) + BED_SLOTS[s].dz });
 const BOUNDS = { minX: -13.5, maxX: 9.8, minZ: -8.6, maxZ: 8.6 };
 const COUNTER_CAP = 75;
+const CASH_VISIBLE = 150;
+const QUEUE_MAX = 9;
 
 // ---------------------------------------------------------------------
 //  Renderer, scena, camera
@@ -92,17 +95,54 @@ function partsGeo(parts) {
   return out;
 }
 
-// Mazzo di fiori: cono di carta + rose. Origine alla base, alto ~0.75
-const BOUQUET_GEO = partsGeo([
-  { g: new THREE.ConeGeometry(0.21, 0.56, 9), m: M4(0, 0.28, 0, Math.PI), c: 0xfff6f8 },
-  { g: new THREE.CylinderGeometry(0.115, 0.1, 0.07, 9), m: M4(0, 0.17, 0), c: 0xf58bb0 },
-  { g: new THREE.ConeGeometry(0.06, 0.22, 5), m: M4(0.16, 0.52, 0.02, 0, 0, -0.7), c: 0x3f9e35 },
-  { g: new THREE.ConeGeometry(0.06, 0.22, 5), m: M4(-0.15, 0.52, -0.04, 0, 0, 0.7), c: 0x4fb33e },
+// Mazzo di fiori in piedi: cono di carta + fiori. Origine alla base, alto ~0.75
+function bouquetGeo(paper, ribbon, flowers) {
+  return partsGeo([
+    { g: new THREE.ConeGeometry(0.21, 0.56, 9), m: M4(0, 0.28, 0, Math.PI), c: paper },
+    { g: new THREE.CylinderGeometry(0.115, 0.1, 0.07, 9), m: M4(0, 0.17, 0), c: ribbon },
+    { g: new THREE.ConeGeometry(0.06, 0.22, 5), m: M4(0.16, 0.52, 0.02, 0, 0, -0.7), c: 0x3f9e35 },
+    { g: new THREE.ConeGeometry(0.06, 0.22, 5), m: M4(-0.15, 0.52, -0.04, 0, 0, 0.7), c: 0x4fb33e },
+    ...flowers,
+  ]);
+}
+const ROSE_UP = bouquetGeo(0xfff6f8, 0xf58bb0, [
   { g: new THREE.IcosahedronGeometry(0.13, 1), m: M4(0, 0.66, 0), c: 0xe8336b },
   { g: new THREE.IcosahedronGeometry(0.12, 1), m: M4(0.11, 0.58, 0.08), c: 0xff6492 },
   { g: new THREE.IcosahedronGeometry(0.12, 1), m: M4(-0.11, 0.58, 0.06), c: 0xd92a5c },
   { g: new THREE.IcosahedronGeometry(0.12, 1), m: M4(0.02, 0.58, -0.12), c: 0xff4f84 },
 ]);
+const daisyHeads = [[0, 0.68, 0, 0], [0.11, 0.6, 0.08, -0.4], [-0.11, 0.6, 0.06, 0.4], [0.02, 0.6, -0.12, 0.2]]
+  .flatMap(([x, y, z, t]) => [
+    { g: new THREE.CylinderGeometry(0.14, 0.14, 0.03, 10), m: M4(x, y, z, t * 0.5, 0, t), c: 0xffffff },
+    { g: new THREE.SphereGeometry(0.055, 8, 6), m: M4(x, y + 0.03, z), c: 0xffcf2e },
+  ]);
+const DAISY_UP = bouquetGeo(0xdff1ff, 0xffd23f, daisyHeads);
+
+// Piantina di fragole (nell'aiuola)
+const STRAW_PLANT = partsGeo([
+  { g: new THREE.IcosahedronGeometry(0.2, 0), m: M4(0.1, 0.22, 0, 0, 0, 0, 1, 0.6, 1), c: 0x3f9e35 },
+  { g: new THREE.IcosahedronGeometry(0.2, 0), m: M4(-0.12, 0.24, 0.06, 0, 1, 0, 1, 0.6, 1), c: 0x4fb33e },
+  { g: new THREE.IcosahedronGeometry(0.18, 0), m: M4(0, 0.3, -0.12, 0, 2, 0, 1, 0.6, 1), c: 0x5cbf44 },
+  ...[[0.2, 0.2, 0.12], [-0.18, 0.18, 0.18], [0.05, 0.2, 0.22], [-0.05, 0.38, 0]].flatMap(([x, y, z]) => [
+    { g: new THREE.ConeGeometry(0.075, 0.16, 7), m: M4(x, y, z, Math.PI), c: 0xe8283c },
+    { g: new THREE.ConeGeometry(0.05, 0.04, 5), m: M4(x, y + 0.09, z), c: 0x2f8a2a },
+  ]),
+]);
+// Cassetta di fragole (oggetto da trasportare). Già "sdraiata", base a y=0
+const STRAW_ITEM = partsGeo([
+  { g: new THREE.BoxGeometry(0.58, 0.13, 0.38), m: M4(0, 0.065, 0), c: 0xd59a5a },
+  { g: new THREE.BoxGeometry(0.6, 0.03, 0.4), m: M4(0, 0.13, 0), c: 0xb57a3e },
+  ...[-0.18, 0, 0.18].flatMap((x) => [-0.09, 0.09].map((z) => (
+    { g: new THREE.IcosahedronGeometry(0.075, 0), m: M4(x + rand(-0.02, 0.02), 0.17, z), c: 0xe8283c }))),
+]);
+// Un mazzo "sdraiato" per le pile: lungo l'asse x, base a y=0
+const laid = (g) => g.clone().rotateZ(Math.PI / 2).translate(0.37, 0.21, 0);
+
+const PRODUCTS = {
+  rose: { name: 'Rose', price: 2, plant: ROSE_UP, item: laid(ROSE_UP), color: '#ff4f84' },
+  daisy: { name: 'Margherite', price: 3, plant: DAISY_UP, item: laid(DAISY_UP), color: '#ffffff' },
+  straw: { name: 'Fragole', price: 5, plant: STRAW_PLANT, item: STRAW_ITEM, color: '#e8283c' },
+};
 
 // Mazzetto di banconote
 const BILL_GEO = partsGeo([
@@ -111,9 +151,28 @@ const BILL_GEO = partsGeo([
   { g: new THREE.CylinderGeometry(0.06, 0.06, 0.03, 12), m: M4(0, 0.135, 0), c: 0x2a9a45 },
 ]);
 
-function makeBouquet() {
-  const m = new THREE.Mesh(BOUQUET_GEO, VC_MAT);
+// Trattorino (aratro)
+const TRACTOR_GEO = partsGeo([
+  { g: new THREE.BoxGeometry(0.5, 0.28, 0.9), m: M4(0, 0.38, 0.05), c: 0xe0362c },
+  { g: new THREE.BoxGeometry(0.44, 0.2, 0.4), m: M4(0, 0.58, 0.3), c: 0xc82a22 },
+  { g: new THREE.BoxGeometry(0.46, 0.42, 0.36), m: M4(0, 0.72, -0.2), c: 0xe0362c },
+  { g: new THREE.BoxGeometry(0.4, 0.24, 0.38), m: M4(0, 0.78, -0.2), c: 0x9fe3ff },
+  { g: new THREE.BoxGeometry(0.52, 0.05, 0.42), m: M4(0, 0.95, -0.2), c: 0xffffff },
+  { g: new THREE.CylinderGeometry(0.04, 0.04, 0.3), m: M4(0.15, 0.82, 0.38), c: 0x333333 },
+  { g: new THREE.CylinderGeometry(0.25, 0.25, 0.14, 14), m: M4(-0.31, 0.25, -0.22, 0, 0, Math.PI / 2), c: 0x262626 },
+  { g: new THREE.CylinderGeometry(0.25, 0.25, 0.14, 14), m: M4(0.31, 0.25, -0.22, 0, 0, Math.PI / 2), c: 0x262626 },
+  { g: new THREE.CylinderGeometry(0.12, 0.12, 0.16, 10), m: M4(-0.31, 0.25, -0.22, 0, 0, Math.PI / 2), c: 0xffd23f },
+  { g: new THREE.CylinderGeometry(0.12, 0.12, 0.16, 10), m: M4(0.31, 0.25, -0.22, 0, 0, Math.PI / 2), c: 0xffd23f },
+  { g: new THREE.CylinderGeometry(0.14, 0.14, 0.1, 12), m: M4(-0.27, 0.14, 0.38, 0, 0, Math.PI / 2), c: 0x262626 },
+  { g: new THREE.CylinderGeometry(0.14, 0.14, 0.1, 12), m: M4(0.27, 0.14, 0.38, 0, 0, Math.PI / 2), c: 0x262626 },
+  { g: new THREE.BoxGeometry(0.7, 0.2, 0.12), m: M4(0, 0.15, -0.55), c: 0x9a9a9a },
+  ...[-0.24, 0, 0.24].map((x) => ({ g: new THREE.ConeGeometry(0.05, 0.18, 4), m: M4(x, 0.05, -0.58, Math.PI), c: 0x7a7a7a })),
+]);
+
+function makeItem(product) {
+  const m = new THREE.Mesh(PRODUCTS[product].item, VC_MAT);
   m.castShadow = true;
+  m.userData.product = product;
   return m;
 }
 function makeBill() {
@@ -156,18 +215,41 @@ function roundRect(ctx, x, y, w, h, r) {
   ctx.arcTo(x, y, x + w, y, r);
   ctx.closePath();
 }
-function drawTulip(ctx, x, y, s) {
+// Icona del prodotto (nuvolette dei clienti e pedane)
+function drawProduct(ctx, product, x, y, s) {
   ctx.save();
   ctx.translate(x, y); ctx.scale(s, s);
-  ctx.strokeStyle = '#3c9a33'; ctx.lineWidth = 5; ctx.lineCap = 'round';
-  ctx.beginPath(); ctx.moveTo(0, 2); ctx.quadraticCurveTo(-3, 18, 2, 30); ctx.stroke();
-  ctx.fillStyle = '#4fb33e';
-  ctx.beginPath(); ctx.ellipse(-9, 20, 9, 4, -0.7, 0, TAU); ctx.fill();
-  ctx.fillStyle = '#ff4f84';
-  ctx.beginPath();
-  ctx.moveTo(-12, -14); ctx.lineTo(-6, -4); ctx.lineTo(0, -16); ctx.lineTo(6, -4); ctx.lineTo(12, -14);
-  ctx.quadraticCurveTo(14, 6, 0, 6); ctx.quadraticCurveTo(-14, 6, -12, -14);
-  ctx.fill();
+  if (product === 'straw') {
+    ctx.fillStyle = '#e8283c';
+    ctx.beginPath();
+    ctx.moveTo(0, 20); ctx.bezierCurveTo(-22, 2, -18, -14, 0, -12); ctx.bezierCurveTo(18, -14, 22, 2, 0, 20);
+    ctx.fill();
+    ctx.fillStyle = '#ffe28a';
+    for (const [px, py] of [[-7, -3], [6, -4], [0, 4], [-4, 10], [5, 9]]) ctx.fillRect(px, py, 2.5, 3.5);
+    ctx.fillStyle = '#3c9a33';
+    ctx.beginPath(); ctx.moveTo(-12, -14); ctx.lineTo(0, -8); ctx.lineTo(12, -14); ctx.lineTo(4, -18); ctx.lineTo(0, -24);
+    ctx.lineTo(-4, -18); ctx.closePath(); ctx.fill();
+  } else {
+    ctx.strokeStyle = '#3c9a33'; ctx.lineWidth = 5; ctx.lineCap = 'round';
+    ctx.beginPath(); ctx.moveTo(0, 2); ctx.quadraticCurveTo(-3, 18, 2, 30); ctx.stroke();
+    ctx.fillStyle = '#4fb33e';
+    ctx.beginPath(); ctx.ellipse(-9, 20, 9, 4, -0.7, 0, TAU); ctx.fill();
+    if (product === 'daisy') {
+      ctx.fillStyle = '#ffffff';
+      for (let i = 0; i < 9; i++) {
+        const a = i / 9 * TAU;
+        ctx.beginPath(); ctx.ellipse(Math.cos(a) * 9, -6 + Math.sin(a) * 9, 7, 3.6, a, 0, TAU); ctx.fill();
+      }
+      ctx.fillStyle = '#ffcf2e';
+      ctx.beginPath(); ctx.arc(0, -6, 6, 0, TAU); ctx.fill();
+    } else {
+      ctx.fillStyle = '#ff4f84';
+      ctx.beginPath();
+      ctx.moveTo(-12, -14); ctx.lineTo(-6, -4); ctx.lineTo(0, -16); ctx.lineTo(6, -4); ctx.lineTo(12, -14);
+      ctx.quadraticCurveTo(14, 6, 0, 6); ctx.quadraticCurveTo(-14, 6, -12, -14);
+      ctx.fill();
+    }
+  }
   ctx.restore();
 }
 function drawBillIcon(ctx, x, y, s) {
@@ -181,8 +263,9 @@ function drawBillIcon(ctx, x, y, s) {
 }
 
 // ---------------------------------------------------------------------
-//  Terreno, sentieri e decorazioni
+//  Terreno, sentieri e decorazioni (tutti gli spiazzali, anche quelli chiusi)
 // ---------------------------------------------------------------------
+const TOP_Z = czOf(AREA_PRODUCTS.length - 1) - 9.8;
 const grassTex = canvasTex(256, 256, (ctx, w, h) => {
   ctx.fillStyle = '#74c043'; ctx.fillRect(0, 0, w, h);
   for (let i = 0; i < 900; i++) {
@@ -191,9 +274,10 @@ const grassTex = canvasTex(256, 256, (ctx, w, h) => {
   }
 });
 grassTex.wrapS = grassTex.wrapT = THREE.RepeatWrapping;
-grassTex.repeat.set(24, 24);
-const ground = new THREE.Mesh(new THREE.PlaneGeometry(120, 120), new THREE.MeshLambertMaterial({ map: grassTex }));
+grassTex.repeat.set(36, 36);
+const ground = new THREE.Mesh(new THREE.PlaneGeometry(180, 180), new THREE.MeshLambertMaterial({ map: grassTex }));
 ground.rotation.x = -Math.PI / 2;
+ground.position.z = -20;
 ground.receiveShadow = true;
 scene.add(ground);
 
@@ -218,10 +302,6 @@ function path(x0, z0, x1, z1) {
   m.receiveShadow = true;
   scene.add(m);
 }
-path(-4, -4.5, 5.6, 4.6);     // piazza del negozio
-path(5.6, -3.8, 20, -0.6);    // fila dei clienti / ingresso
-path(-13.5, -2.5, -4, -1.1);  // sentiero tra le aiuole
-
 function hedge(x, z, w, d, h = 1.0) {
   box(w, h, d, 0x6cc83a, x, h / 2, z);
   box(w + 0.06, 0.12, d + 0.06, 0x84d94a, x, h - 0.02, z, scene, false);
@@ -249,26 +329,50 @@ function cypress(x, z, h = 3.6) {
   t.position.set(x, h / 2, z); t.castShadow = true;
   scene.add(t);
 }
+function balustrade(x0, x1, z) {
+  for (let x = x0; x <= x1 + 0.01; x += 2) box(0.4, 1.0, 0.4, 0xf0e9da, x, 0.5, z);
+  const w = x1 - x0, cx = (x0 + x1) / 2;
+  box(w + 0.4, 0.16, 0.5, 0xfaf4e6, cx, 1.05, z);
+  box(w + 0.4, 0.12, 0.4, 0xf0e9da, cx, 0.1, z);
+}
 
-// Siepi sul perimetro (varco a destra per l'ingresso dei clienti)
+// Cancelli tra uno spiazzale e l'altro (spariscono quando li sblocchi)
+const gates = [];
+for (let k = 0; k < AREA_PRODUCTS.length; k++) {
+  const cz = czOf(k);
+  path(-4, cz - 4.5, 5.6, cz + 4.6);         // piazza del negozio
+  path(5.6, cz - 3.8, 20, cz - 0.6);         // fila dei clienti / ingresso
+  path(-13.5, cz - 2.5, -4, cz - 1.1);       // sentiero tra le aiuole
+  hedge(6.4, cz - 5.6, 4.2, 1.2, 0.8);
+  hedge(8.6, cz + 4.6, 1.4, 3.6, 0.8);
+  bush(4.2, cz - 7.6); bush(9.4, cz + 1.3, 0.7); bush(9.4, cz - 5.2, 0.7);
+  bush(-13, cz - 8); bush(8.8, cz - 8.2, 0.9); bush(-12.8, cz + 7.8, 1.1);
+  cypress(9.9, cz + 8.7); cypress(-13.8, cz + 8.6, 3.2);
+  // Siepe destra con il varco per i clienti
+  hedge(10.8, cz + 4.9, 0.8, 9.4);
+  hedge(10.8, cz - 7, 0.8, 5.6);
+  for (let i = 0; i < 3; i++) bush(rand(12.5, 18), cz + rand(1.5, 9), rand(0.8, 1.3));
+  for (let i = 0; i < 3; i++) bush(rand(12.5, 18), cz + rand(-9.5, -5), rand(0.8, 1.3));
+  // Divisorio in alto: balaustra con cancello al centro (l'ultimo è chiuso)
+  const zTop = cz - 9.8;
+  if (k === AREA_PRODUCTS.length - 1) {
+    balustrade(-14.6, 10.8, zTop);
+  } else {
+    balustrade(-14.6, -2.6, zTop);
+    balustrade(2.6, 10.8, zTop);
+    const gate = new THREE.Group();
+    gate.position.set(0, 0, zTop);
+    for (let x = -2.1; x <= 2.11; x += 0.42) box(0.12, 1.3, 0.12, 0x9c6a3c, x, 0.65, 0, gate);
+    box(4.4, 0.14, 0.16, 0x7d4f2a, 0, 1.15, 0, gate);
+    box(4.4, 0.14, 0.16, 0x7d4f2a, 0, 0.35, 0, gate);
+    scene.add(gate);
+    gates.push(gate);
+  }
+}
 hedge(-2, 9.6, 25.2, 0.8);
-hedge(10.8, 4.9, 0.8, 9.4);
-hedge(10.8, -7, 0.8, 5.6);
-hedge(-14.6, 0, 0.8, 20);
-// Balaustra in pietra in alto
-for (let x = -14.6; x <= 10.8; x += 2) box(0.4, 1.0, 0.4, 0xf0e9da, x, 0.5, -9.8);
-box(25.8, 0.16, 0.5, 0xfaf4e6, -1.9, 1.05, -9.8);
-box(25.8, 0.12, 0.4, 0xf0e9da, -1.9, 0.1, -9.8);
-// Siepi decorative interne e cespugli fioriti
-hedge(6.4, -5.6, 4.2, 1.2, 0.8);
-hedge(8.6, 4.6, 1.4, 3.6, 0.8);
-bush(4.2, -7.6); bush(-12.8, 7.8, 1.1); bush(-1.5, 7.9, 0.9); bush(9.4, 1.3, 0.7); bush(9.4, -5.2, 0.7);
-bush(-13, -8); bush(8.8, -8.2, 0.9);
-cypress(9.9, 8.7); cypress(-13.8, 8.6, 3.2); cypress(9.8, -8.8, 4);
-// Fuori dal recinto
+hedge(-14.6, (9.6 + TOP_Z) / 2, 0.8, 9.6 - TOP_Z);
+bush(-1.5, 7.9, 0.9);
 for (let i = 0; i < 14; i++) bush(rand(-20, 18), rand(11, 17), rand(0.8, 1.3));
-for (let i = 0; i < 6; i++) bush(rand(12.5, 18), rand(-12, -5), rand(0.8, 1.3));
-for (let i = 0; i < 6; i++) bush(rand(12.5, 18), rand(1.5, 10), rand(0.8, 1.3));
 
 // ---------------------------------------------------------------------
 //  Personaggi
@@ -329,7 +433,7 @@ function makeCharacter(o) {
     add(new THREE.SphereGeometry(0.235, 14, 8, 0, TAU, 0, Math.PI / 2), o.capColor, 0, 0.06, 0, head);
     add(new THREE.BoxGeometry(0.3, 0.03, 0.2), o.capColor, 0, 0.07, 0.25, head);
   }
-  return { group: g, body, legL, legR, armL, armR, walk: rand(0, TAU), facing: 0 };
+  return { group: g, body, legL, legR, armL, armR, walk: rand(0, TAU), facing: 0, speed: 0 };
 }
 
 function animateChar(c, speed, dt, carrying) {
@@ -369,7 +473,7 @@ function moveTo(c, x, z, speed, dt) {
 }
 
 // ---------------------------------------------------------------------
-//  Pile di oggetti (fiori in braccio, sul bancone, soldi)
+//  Pile di oggetti (prodotti in braccio, sul bancone, soldi)
 // ---------------------------------------------------------------------
 const _v = new THREE.Vector3();
 class Stack {
@@ -393,29 +497,41 @@ class Stack {
     return () => this.slotWorld(Math.min(i, this.total - 1), v);
   }
   receive(mesh) { this.incoming--; this.add(mesh); }
-  add(mesh) {
-    const l = this.layout(this.items.length);
-    this.group.add(mesh);
+  place(mesh, i) {
+    const l = this.layout(i);
     mesh.position.set(l.x, l.y, l.z);
-    mesh.rotation.set(l.rx || 0, l.ry || 0, l.rz || 0);
+    mesh.rotation.set(0, l.ry || 0, 0);
+  }
+  add(mesh) {
+    this.group.add(mesh);
+    this.place(mesh, this.items.length);
     mesh.scale.setScalar(1);
     this.items.push(mesh);
   }
-  pop() {
-    const m = this.items.pop();
+  pop() { return this.takeAt(this.items.length - 1); }
+  // Prende l'oggetto più in alto che soddisfa la condizione
+  takeWhere(pred) {
+    for (let i = this.items.length - 1; i >= 0; i--) if (pred(this.items[i])) return this.takeAt(i);
+    return null;
+  }
+  takeAt(i) {
+    const m = this.items[i];
     if (!m) return null;
     const pos = m.getWorldPosition(new THREE.Vector3());
     const quat = m.getWorldQuaternion(new THREE.Quaternion());
+    this.items.splice(i, 1);
     this.group.remove(m);
+    for (let j = i; j < this.items.length; j++) this.place(this.items[j], j);
     m.position.copy(pos);
     m.quaternion.copy(quat);
     return m;
   }
 }
-const carryLayout = (i) => ({ x: 0.36, y: i * 0.2, z: 0, rz: Math.PI / 2 });
+const carryLayout = (i) => ({ x: 0, y: i * 0.2, z: 0 });
+const ITEM_H = 0.2;
 
 // ---------------------------------------------------------------------
-//  Oggetti in volo (fiori e banconote che saltano da un posto all'altro)
+//  Oggetti in volo (prodotti e banconote che saltano da un posto all'altro)
 // ---------------------------------------------------------------------
 const flyers = [];
 function fly(mesh, toFn, dur, arc, onDone) {
@@ -487,7 +603,7 @@ function updateFx(dt) {
 // ---------------------------------------------------------------------
 let actx = null;
 let muted = false;
-try { muted = localStorage.getItem(SAVE_KEY + '.muted') === '1'; } catch { }
+try { muted = localStorage.getItem('flowerTycoon.muted') === '1'; } catch { }
 const lastSfx = {};
 function tone(freq, dur, type = 'sine', vol = 0.1, slide = 0, delay = 0) {
   if (!actx || muted) return;
@@ -524,9 +640,10 @@ function initAudio() {
 //  Stato di gioco e salvataggio
 // ---------------------------------------------------------------------
 const state = {
-  money: 0, stage: 0, padPaid: 0,
-  capacity: 10, price: 2, speed: 5.2, gardenerCap: 6,
+  money: 0, stage: 0,
+  capacity: 10, priceBonus: 0, speed: 5.2, gardenerCap: 6,
 };
+const priceOf = (product) => PRODUCTS[product].price + state.priceBonus;
 let loaded = null;
 try { loaded = JSON.parse(localStorage.getItem(SAVE_KEY)); } catch { }
 
@@ -538,77 +655,16 @@ function save() {
   } catch { }
 }
 
-// ---------------------------------------------------------------------
-//  Aiuole
-// ---------------------------------------------------------------------
-const beds = [];
-const plants = [];
-const REGROW = 4.5;
-function addBed(x, z, instant) {
-  const g = new THREE.Group();
-  g.position.set(x, 0, z);
-  const cols = 3, rows = 4, sp = 0.95;
-  const w = cols * sp + 0.5, d = rows * sp + 0.5;
-  box(w, 0.2, d, 0x8a4b2c, 0, 0.1, 0, g, false);
-  box(w - 0.3, 0.04, d - 0.3, 0x6e3a20, 0, 0.21, 0, g, false);
-  scene.add(g);
-  for (let i = 0; i < cols; i++) for (let j = 0; j < rows; j++) {
-    const m = makeBouquet();
-    const px = (i - (cols - 1) / 2) * sp, pz = (j - (rows - 1) / 2) * sp;
-    m.position.set(px, 0.2, pz);
-    m.rotation.y = rand(0, TAU);
-    g.add(m);
-    plants.push({ mesh: m, x: x + px, z: z + pz, grown: true, timer: 0, grow: 1, reservedBy: null });
-  }
-  beds.push({ x, z, group: g });
-  if (!instant) { popIn(g); burst(x, z); }
-}
-function updatePlants(dt) {
-  for (const p of plants) {
-    if (!p.grown) {
-      p.timer -= dt;
-      if (p.timer <= 0) { p.grown = true; p.grow = 0; p.mesh.visible = true; }
-    } else if (p.grow < 1) {
-      p.grow = Math.min(1, p.grow + dt * 3);
-      const k = p.grow;
-      p.mesh.scale.setScalar(Math.max(0.001, k < 1 ? k * (1 + Math.sin(k * Math.PI) * 0.3) : 1));
-    }
-  }
-}
-function harvest(p) {
-  p.grown = false;
-  p.timer = REGROW + rand(0, 1.5);
-  p.mesh.visible = false;
-  p.reservedBy = null;
-  const m = makeBouquet();
-  m.position.set(p.x, 0.25, p.z);
-  return m;
+// Ostacoli: rettangoli (eventualmente ruotati) { x, z, hw, hd, rot }
+const obstacles = [];
+for (let k = 0; k < AREA_PRODUCTS.length; k++) {
+  const cz = czOf(k);
+  obstacles.push({ x: 6.4, z: cz - 5.6, hw: 2.1, hd: 0.6, rot: 0 }, { x: 8.6, z: cz + 4.6, hw: 0.7, hd: 1.8, rot: 0 });
 }
 
 // ---------------------------------------------------------------------
-//  Bancone, pedana VENDI, pedana soldi
+//  Pedane a terra
 // ---------------------------------------------------------------------
-const counterGroup = new THREE.Group();
-counterGroup.position.set(COUNTER.x, 0, COUNTER.z);
-counterGroup.rotation.y = COUNTER.rot;
-scene.add(counterGroup);
-box(COUNTER.w, 0.95, COUNTER.d, 0xece6d6, 0, 0.475, 0, counterGroup);
-box(COUNTER.w + 0.2, 0.14, COUNTER.d + 0.2, 0x3d63c9, 0, 1.0, 0, counterGroup);
-box(COUNTER.w + 0.22, 0.06, 0.08, 0x2f4ea3, 0, 0.92, -COUNTER.d / 2 - 0.1, counterGroup);
-// Portatile/cassa
-const laptop = new THREE.Group();
-laptop.position.set(0.95, 1.07, -0.1);
-counterGroup.add(laptop);
-box(0.62, 0.04, 0.42, 0x2c2f38, 0, 0.02, 0.05, laptop);
-const screenM = box(0.62, 0.42, 0.04, 0x2c2f38, 0, 0.23, -0.17, laptop);
-screenM.rotation.x = -0.25;
-const scr = box(0.54, 0.34, 0.01, 0x7fd7ff, 0, 0, 0.025, screenM, false);
-scr.material = new THREE.MeshBasicMaterial({ color: 0x8fdcff });
-const counterStack = new Stack(counterGroup, (i) => {
-  const col = Math.floor(i / 25), j = i % 25;
-  return { x: -1.2 + col * 0.46, y: 1.07 + j * 0.2, z: -0.36, rx: Math.PI / 2 };
-});
-
 function makePadMesh(size, tex) {
   const g = new THREE.Group();
   const m = new THREE.Mesh(new THREE.PlaneGeometry(size, size),
@@ -621,7 +677,6 @@ function makePadMesh(size, tex) {
   scene.add(g);
   return { group: g, mesh: m };
 }
-
 function drawSellPad(active) {
   return (ctx, w, h) => {
     ctx.clearRect(0, 0, w, h);
@@ -643,21 +698,156 @@ function drawSellPad(active) {
 }
 const sellTexOff = canvasTex(256, 256, drawSellPad(false));
 const sellTexOn = canvasTex(256, 256, drawSellPad(true));
-const sellPad = makePadMesh(2.4, sellTexOff);
-sellPad.group.position.set(SELL.x, 0.03, SELL.z);
-
-const cashPad = makePadMesh(2.7, canvasTex(256, 256, (ctx, w, h) => {
+const cashTex = canvasTex(256, 256, (ctx, w, h) => {
   roundRect(ctx, 12, 12, w - 24, h - 24, 40);
   ctx.fillStyle = 'rgba(80,90,100,0.35)'; ctx.fill();
   ctx.lineWidth = 12; ctx.strokeStyle = '#3fd0ff'; ctx.stroke();
-}));
-cashPad.group.position.set(CASH.x, 0.03, CASH.z);
-const cashStack = new Stack(cashPad.group, (i) => {
-  const pile = i % 6, lvl = Math.floor(i / 6);
-  return { x: (pile % 2) * 0.68 - 0.34, y: lvl * 0.135, z: Math.floor(pile / 2) * 0.44 - 0.44, ry: rand(-0.06, 0.06) };
 });
-const CASH_VISIBLE = 150;
-let cashBonus = 0; // valore oltre le banconote visibili
+
+// ---------------------------------------------------------------------
+//  Spiazzali (aree di vendita)
+// ---------------------------------------------------------------------
+const areas = [];
+function buildArea(k, instant) {
+  const cz = czOf(k);
+  const product = AREA_PRODUCTS[k];
+  const A = {
+    k, cz, product,
+    sell: { x: -0.3, z: cz + 1.75, r: 1.15 },
+    cash: { x: 3.4, z: cz + 2.0, r: 1.5 },
+    drop: { x: -1.9, z: cz + 1.5 },
+    post: { x: 0.3, z: cz + 1.15 },
+    queue: { x: -0.2, z: cz - 1.45, step: 0.95 },
+    exit: [{ x: -0.2, z: cz - 2.9 }, { x: 16, z: cz - 2.9 }],
+    customers: [], leaving: [], spawnTimer: 1, sellTimer: 0,
+    cashier: null, beds: [], cashBonus: 0,
+  };
+  // Bancone con cassa
+  const g = new THREE.Group();
+  g.position.set(0, 0, cz);
+  scene.add(g);
+  const { w, d } = COUNTER_SIZE;
+  box(w, 0.95, d, 0xece6d6, 0, 0.475, 0, g);
+  box(w + 0.2, 0.14, d + 0.2, [0x3d63c9, 0xf0a23a, 0xd94a6a][k], 0, 1.0, 0, g);
+  box(w + 0.22, 0.06, 0.08, 0x2f4ea3, 0, 0.92, -d / 2 - 0.1, g);
+  const laptop = new THREE.Group();
+  laptop.position.set(0.95, 1.07, -0.1);
+  g.add(laptop);
+  box(0.62, 0.04, 0.42, 0x2c2f38, 0, 0.02, 0.05, laptop);
+  const screenM = box(0.62, 0.42, 0.04, 0x2c2f38, 0, 0.23, -0.17, laptop);
+  screenM.rotation.x = -0.25;
+  const scr = box(0.54, 0.34, 0.01, 0x7fd7ff, 0, 0, 0.025, screenM, false);
+  scr.material = new THREE.MeshBasicMaterial({ color: 0x8fdcff });
+  A.counterGroup = g;
+  A.counter = new Stack(g, (i) => {
+    const col = Math.floor(i / 25), j = i % 25;
+    return { x: -1.2 + col * 0.46, y: 1.07 + j * ITEM_H, z: 0, ry: Math.PI / 2 };
+  });
+  obstacles.push({ x: 0, z: cz, hw: w / 2 + 0.1, hd: d / 2 + 0.1, rot: 0 });
+
+  A.sellPad = makePadMesh(2.4, sellTexOff);
+  A.sellPad.mesh.material = A.sellPad.mesh.material.clone();
+  A.sellPad.group.position.set(A.sell.x, 0.03, A.sell.z);
+  A.cashPad = makePadMesh(2.7, cashTex);
+  A.cashPad.group.position.set(A.cash.x, 0.03, A.cash.z);
+  A.cashStack = new Stack(A.cashPad.group, (i) => {
+    const pile = i % 6, lvl = Math.floor(i / 6);
+    return { x: (pile % 2) * 0.68 - 0.34, y: lvl * 0.135, z: Math.floor(pile / 2) * 0.44 - 0.44, ry: ((i * 7) % 5 - 2) * 0.03 };
+  });
+
+  areas.push(A);
+  if (k > 0 && gates[k - 1]) { scene.remove(gates[k - 1]); }
+  BOUNDS.minZ = cz - 8.6;
+  addBed(A, 0, instant);
+  if (!instant) {
+    popIn(g); popIn(A.sellPad.group, 0.1); popIn(A.cashPad.group, 0.2);
+    burst(0, cz, 80);
+  } else {
+    // Qualche prodotto già sul bancone per far partire subito le vendite
+    for (let i = 0; i < 4; i++) A.counter.add(makeItem(product));
+  }
+  return A;
+}
+const areaOfProduct = (product) => areas.find((a) => a.product === product);
+
+// ---------------------------------------------------------------------
+//  Aiuole (ognuna con il suo giardiniere e il suo aratro)
+// ---------------------------------------------------------------------
+const plants = [];
+const REGROW = 4.5;
+const BED_COLS = 3, BED_ROWS = 4, BED_SP = 0.95;
+function addBed(A, slot, instant) {
+  const { x, z } = bedPos(A.k, slot);
+  const g = new THREE.Group();
+  g.position.set(x, 0, z);
+  const w = BED_COLS * BED_SP + 0.5, d = BED_ROWS * BED_SP + 0.5;
+  box(w, 0.2, d, 0x8a4b2c, 0, 0.1, 0, g, false);
+  box(w - 0.3, 0.04, d - 0.3, 0x6e3a20, 0, 0.21, 0, g, false);
+  scene.add(g);
+  const bed = { area: A, slot, x, z, product: A.product, group: g, plants: [], gardener: null, plow: null };
+  for (let i = 0; i < BED_COLS; i++) for (let j = 0; j < BED_ROWS; j++) {
+    const m = new THREE.Mesh(PRODUCTS[A.product].plant, VC_MAT);
+    m.castShadow = true;
+    const px = (i - (BED_COLS - 1) / 2) * BED_SP, pz = (j - (BED_ROWS - 1) / 2) * BED_SP;
+    m.position.set(px, 0.2, pz);
+    m.rotation.y = rand(0, TAU);
+    g.add(m);
+    const p = { bed, mesh: m, x: x + px, z: z + pz, grown: true, timer: 0, grow: 1, reservedBy: null };
+    bed.plants.push(p);
+    plants.push(p);
+  }
+  A.beds[slot] = bed;
+  if (!instant) { popIn(g); burst(x, z); }
+  return bed;
+}
+function updatePlants(dt) {
+  for (const p of plants) {
+    if (!p.grown) {
+      p.timer -= dt * (p.bed.plow ? 1.8 : 1);
+      if (p.timer <= 0) { p.grown = true; p.grow = 0; p.mesh.visible = true; }
+    } else if (p.grow < 1) {
+      p.grow = Math.min(1, p.grow + dt * 3);
+      const k = p.grow;
+      p.mesh.scale.setScalar(Math.max(0.001, k < 1 ? k * (1 + Math.sin(k * Math.PI) * 0.3) : 1));
+    }
+  }
+}
+// Raccoglie una pianta: ritorna i prodotti (2 se l'aiuola ha l'aratro)
+function harvest(p, room) {
+  p.grown = false;
+  p.timer = REGROW + rand(0, 1.5);
+  p.mesh.visible = false;
+  p.reservedBy = null;
+  const n = Math.min(room, p.bed.plow ? 2 : 1);
+  const out = [];
+  for (let i = 0; i < n; i++) {
+    const m = makeItem(p.bed.product);
+    m.position.set(p.x, 0.3 + i * 0.2, p.z);
+    out.push(m);
+  }
+  return out;
+}
+
+function buildPlow(bed, instant) {
+  const m = new THREE.Mesh(TRACTOR_GEO, VC_MAT);
+  m.castShadow = true;
+  m.position.set(bed.x, 0.2, bed.z);
+  scene.add(m);
+  bed.plow = { mesh: m, t: rand(0, 10) };
+  if (!instant) { popIn(m); burst(bed.x, bed.z, 40); }
+}
+function updatePlows(dt) {
+  for (const A of areas) for (const bed of A.beds) {
+    if (!bed || !bed.plow) continue;
+    const pl = bed.plow;
+    pl.t += dt;
+    // Il trattorino percorre l'aiuola avanti e indietro
+    const nx = bed.x + Math.sin(pl.t * 0.35) * 0.95, nz = bed.z + Math.sin(pl.t * 0.9) * 1.6;
+    const dx = nx - pl.mesh.position.x, dz = nz - pl.mesh.position.z;
+    if (Math.hypot(dx, dz) > 1e-4) pl.mesh.rotation.y = Math.atan2(dx, dz);
+    pl.mesh.position.set(nx, 0.2 + Math.abs(Math.sin(pl.t * 12)) * 0.02, nz);
+  }
+}
 
 // ---------------------------------------------------------------------
 //  Giocatore
@@ -686,40 +876,43 @@ maxLabel.visible = false;
 player.group.add(maxLabel);
 
 // ---------------------------------------------------------------------
-//  Aiutanti: giardinieri e cassiera
+//  Aiutanti: giardinieri (uno per aiuola) e cassiere (una per spiazzale)
 // ---------------------------------------------------------------------
 const gardeners = [];
-function hireGardener(px, pz, instant) {
+function hireGardener(bed, instant) {
+  const pad = bedPadPos(bed.area.k, bed.slot);
   const ch = makeCharacter({
     skin: pick(SKINS), shirt: 0x8bc34a, pants: 0x6b4f2a, hair: pick(HAIRS), hat: 'cap', capColor: 0x2e7d32,
   });
-  ch.group.position.set(px, 0, pz);
+  ch.group.position.set(pad.x, 0, pad.z);
   scene.add(ch.group);
   const stack = new Stack(ch.group, carryLayout);
   stack.group.position.set(0, 0.98, 0.42);
-  gardeners.push({ ch, stack, target: null, timer: 0, mode: 'harvest' });
-  if (!instant) { popIn(ch.group); burst(px, pz, 30); }
+  const gd = { ch, stack, bed, target: null, timer: 0, mode: 'harvest' };
+  bed.gardener = gd;
+  gardeners.push(gd);
+  if (!instant) { popIn(ch.group); burst(pad.x, pad.z, 30); }
 }
-let cashier = null;
-function hireCashier(px, pz, instant) {
+function hireCashier(A, px, pz, instant) {
   const ch = makeCharacter({
-    skin: pick(SKINS), shirt: 0x9b59b6, pants: 0x2c3e50, hair: 0x3b2414, hairStyle: 'bun', apron: 0xffffff,
+    skin: pick(SKINS), shirt: [0x9b59b6, 0x2f7fd0, 0xe2455f][A.k], pants: 0x2c3e50, hair: pick(HAIRS),
+    hairStyle: 'bun', apron: 0xffffff,
   });
-  ch.group.position.set(instant ? CASHIER_POST.x : px, 0, instant ? CASHIER_POST.z : pz);
+  ch.group.position.set(instant ? A.post.x : px, 0, instant ? A.post.z : pz);
   scene.add(ch.group);
-  cashier = { ch, atPost: !!instant };
+  A.cashier = { ch, atPost: !!instant };
   if (!instant) { popIn(ch.group); burst(px, pz, 30); }
 }
 
 function updateGardeners(dt) {
   for (const gd of gardeners) {
-    const ch = gd.ch, p = ch.group.position;
+    const ch = gd.ch, p = ch.group.position, bed = gd.bed, A = bed.area;
     gd.timer -= dt;
     if (gd.mode === 'harvest') {
       if (gd.target && (!gd.target.grown || gd.target.reservedBy !== gd)) gd.target = null;
       if (!gd.target && gd.stack.total < state.gardenerCap) {
         let best = null, bd = Infinity;
-        for (const pl of plants) {
+        for (const pl of bed.plants) {
           if (!pl.grown || pl.grow < 1 || pl.reservedBy) continue;
           const d = distXZ(p, pl.x, pl.z);
           if (d < bd) { bd = d; best = pl; }
@@ -728,24 +921,26 @@ function updateGardeners(dt) {
       }
       if (gd.target) {
         if (moveTo(ch, gd.target.x, gd.target.z, 3.4, dt)) {
-          const m = harvest(gd.target);
+          for (const m of harvest(gd.target, state.gardenerCap - gd.stack.total)) {
+            fly(m, gd.stack.reserve(), 0.22, 0.5, (mm) => gd.stack.receive(mm));
+          }
           gd.target = null;
-          fly(m, gd.stack.reserve(), 0.22, 0.5, (mm) => gd.stack.receive(mm));
         }
       } else if (gd.stack.total > 0) {
         gd.mode = 'deliver';
       } else {
-        ch.speed = 0;
+        // Aspetta accanto all'aiuola che i fiori ricrescano
+        if (moveTo(ch, bed.x + 2.1, bed.z + 0.6, 3, dt)) turnTowards(ch, -1, 0, dt);
       }
       if (gd.stack.total >= state.gardenerCap) gd.mode = 'deliver';
     } else {
       if (gd.target) { gd.target.reservedBy = null; gd.target = null; }
-      if (moveTo(ch, GARDENER_DROP.x, GARDENER_DROP.z, 3.4, dt)) {
-        turnTowards(ch, COUNTER.x - p.x, COUNTER.z - p.z, dt);
-        if (gd.stack.count > 0 && gd.timer <= 0 && counterStack.total < COUNTER_CAP) {
+      if (moveTo(ch, A.drop.x, A.drop.z, 3.4, dt)) {
+        turnTowards(ch, -A.drop.x, -A.drop.z + A.cz, dt);
+        if (gd.stack.count > 0 && gd.timer <= 0 && A.counter.total < COUNTER_CAP) {
           gd.timer = 0.09;
           const m = gd.stack.pop();
-          fly(m, counterStack.reserve(), 0.25, 0.7, (mm) => counterStack.receive(mm));
+          fly(m, A.counter.reserve(), 0.25, 0.7, (mm) => A.counter.receive(mm));
           sfx('drop');
         }
         if (gd.stack.total === 0) gd.mode = 'harvest';
@@ -753,46 +948,44 @@ function updateGardeners(dt) {
     }
     animateChar(ch, ch.speed || 0, dt, gd.stack.total > 0);
   }
-  if (cashier) {
-    if (!cashier.atPost) {
-      if (moveTo(cashier.ch, CASHIER_POST.x, CASHIER_POST.z, 3, dt)) cashier.atPost = true;
+  for (const A of areas) {
+    const c = A.cashier;
+    if (!c) continue;
+    if (!c.atPost) {
+      if (moveTo(c.ch, A.post.x, A.post.z, 3, dt)) c.atPost = true;
     } else {
-      cashier.ch.speed = 0;
-      turnTowards(cashier.ch, 0, -1, dt);
+      c.ch.speed = 0;
+      turnTowards(c.ch, 0, -1, dt);
     }
-    animateChar(cashier.ch, cashier.ch.speed || 0, dt, false);
+    animateChar(c.ch, c.ch.speed || 0, dt, false);
   }
 }
 
 // ---------------------------------------------------------------------
-//  Clienti
+//  Clienti (ogni spiazzale ha la sua fila)
 // ---------------------------------------------------------------------
-const queue = [];
-const leaving = [];
-let spawnTimer = 1;
-
-function drawBubble(ctx, w, h, n) {
+function drawBubble(ctx, w, h, product, n) {
   ctx.clearRect(0, 0, w, h);
   ctx.fillStyle = '#262b36';
   roundRect(ctx, 6, 6, w - 12, h - 30, 22); ctx.fill();
   ctx.beginPath(); ctx.moveTo(w / 2 - 14, h - 25); ctx.lineTo(w / 2, h - 6); ctx.lineTo(w / 2 + 14, h - 25); ctx.fill();
-  drawTulip(ctx, 48, 52, 1.35);
+  drawProduct(ctx, product, 48, 52, 1.35);
   ctx.font = '900 58px "Trebuchet MS", Arial, sans-serif';
   ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
   ctx.fillStyle = '#ffffff';
   ctx.fillText(String(n), 110, 54);
 }
 
-function spawnCustomer() {
+function spawnCustomer(A) {
   const ch = makeCharacter({
     skin: pick(SKINS), shirt: pick(SHIRTS), pants: pick(PANTS), hair: pick(HAIRS),
     hairStyle: pick(['short', 'long', 'bun', 'short']),
   });
-  ch.group.position.set(15, 0, QUEUE.z + rand(-0.3, 0.3));
+  ch.group.position.set(13, 0, A.queue.z + rand(-0.3, 0.3));
   scene.add(ch.group);
-  const stack = new Stack(ch.group, (i) => ({ x: 0.36, y: i * 0.2, z: 0, rz: Math.PI / 2 }));
+  const stack = new Stack(ch.group, carryLayout);
   stack.group.position.set(0, 0.98, 0.42);
-  const maxWant = Math.min(7, 3 + Math.floor(state.stage / 2));
+  const maxWant = Math.min(7, 3 + Math.floor(state.stage / 4));
   const want = randInt(1, maxWant);
   const c = document.createElement('canvas');
   c.width = 160; c.height = 120;
@@ -804,43 +997,55 @@ function spawnCustomer() {
   bubble.renderOrder = 11;
   bubble.visible = false;
   ch.group.add(bubble);
-  const cust = { ch, stack, want, bubble, canvas: c, tex, shown: -1, speed: rand(2.4, 2.9), wp: 0 };
-  queue.push(cust);
+  A.customers.push({ ch, stack, want, bubble, canvas: c, tex, shown: -1, speed: rand(3, 3.5), wp: 0 });
 }
 
-function refreshBubble(cu) {
+function refreshBubble(A, cu) {
   const left = cu.want - cu.stack.total;
   if (left === cu.shown) return;
   cu.shown = left;
-  drawBubble(cu.canvas.getContext('2d'), cu.canvas.width, cu.canvas.height, left);
+  drawBubble(cu.canvas.getContext('2d'), cu.canvas.width, cu.canvas.height, A.product, left);
   cu.tex.needsUpdate = true;
 }
 
-function updateCustomers(dt) {
-  spawnTimer -= dt;
-  const rate = gardeners.length ? 2.2 : 3.2;
-  if (spawnTimer <= 0 && queue.length < QUEUE.max) {
-    spawnTimer = rand(rate * 0.7, rate * 1.3);
-    spawnCustomer();
+// Più aiutanti lavorano nello spiazzale, più clienti arrivano
+function spawnInterval(A) {
+  let boost = 1;
+  for (const bed of A.beds) {
+    if (!bed) continue;
+    boost += 0.45;
+    if (bed.gardener) boost += 0.9;
+    if (bed.plow) boost += 0.9;
   }
-  queue.forEach((cu, i) => {
-    const arrived = moveTo(cu.ch, QUEUE.x + i * QUEUE.step, QUEUE.z, cu.speed, dt);
+  if (A.cashier) boost += 0.4;
+  return Math.max(0.45, 3.4 / boost);
+}
+
+function updateCustomers(A, dt) {
+  A.spawnTimer -= dt;
+  if (A.spawnTimer <= 0 && A.customers.length < QUEUE_MAX) {
+    const s = spawnInterval(A);
+    A.spawnTimer = rand(s * 0.7, s * 1.3);
+    spawnCustomer(A);
+  }
+  A.customers.forEach((cu, i) => {
+    const arrived = moveTo(cu.ch, A.queue.x + i * A.queue.step, A.queue.z, cu.speed, dt);
     if (arrived) turnTowards(cu.ch, i === 0 ? 0 : -1, i === 0 ? 1 : 0, dt);
     cu.arrived = arrived;
     cu.bubble.visible = i === 0 && arrived && cu.stack.total < cu.want;
-    if (cu.bubble.visible) refreshBubble(cu);
+    if (cu.bubble.visible) refreshBubble(A, cu);
     animateChar(cu.ch, arrived ? 0 : cu.speed, dt, cu.stack.total > 0);
   });
-  for (let i = leaving.length - 1; i >= 0; i--) {
-    const cu = leaving[i];
-    const w = EXIT[cu.wp];
+  for (let i = A.leaving.length - 1; i >= 0; i--) {
+    const cu = A.leaving[i];
+    const w = A.exit[cu.wp];
     if (moveTo(cu.ch, w.x, w.z, cu.speed, dt)) {
       cu.wp++;
-      if (cu.wp >= EXIT.length) {
+      if (cu.wp >= A.exit.length) {
         scene.remove(cu.ch.group);
         cu.tex.dispose();
         cu.bubble.material.dispose();
-        leaving.splice(i, 1);
+        A.leaving.splice(i, 1);
         continue;
       }
     }
@@ -851,42 +1056,42 @@ function updateCustomers(dt) {
 // ---------------------------------------------------------------------
 //  Vendita
 // ---------------------------------------------------------------------
-let sellTimer = 0;
-function payOut(amount) {
+function payOut(A, amount) {
   // Le banconote volano dal bancone alla pedana dei soldi
-  const nBills = Math.max(1, Math.min(Math.floor(amount / state.price), 12));
+  const price = priceOf(A.product);
+  const nBills = Math.max(1, Math.min(Math.floor(amount / price), 12));
   const each = Math.floor(amount / nBills);
-  let rest = amount - each * nBills;
+  const rest = amount - each * nBills;
   for (let i = 0; i < nBills; i++) {
     const value = each + (i === 0 ? rest : 0);
-    if (cashStack.total >= CASH_VISIBLE) { cashBonus += value; continue; }
+    if (A.cashStack.total >= CASH_VISIBLE) { A.cashBonus += value; continue; }
     const m = makeBill();
     m.userData.value = value;
-    m.position.set(COUNTER.x, 1.2, COUNTER.z);
-    setTimeout(() => fly(m, cashStack.reserve(), 0.45, 1.2, (mm) => cashStack.receive(mm)), i * 60);
+    m.position.set(0, 1.2, A.cz);
+    setTimeout(() => fly(m, A.cashStack.reserve(), 0.45, 1.2, (mm) => A.cashStack.receive(mm)), i * 60);
   }
   sfx('sell');
 }
 
-function updateSelling(dt) {
-  sellTimer -= dt;
-  const playerSelling = distXZ(player.group.position, SELL.x, SELL.z) < SELL.r;
-  const seller = playerSelling || (cashier && cashier.atPost);
-  sellPad.mesh.material.map = (playerSelling || (cashier && cashier.atPost)) ? sellTexOn : sellTexOff;
-  const front = queue[0];
-  if (!front || !front.arrived || !seller || counterStack.count === 0 || sellTimer > 0) return;
+function updateSelling(A, dt) {
+  A.sellTimer -= dt;
+  const playerSelling = distXZ(player.group.position, A.sell.x, A.sell.z) < A.sell.r;
+  const seller = playerSelling || (A.cashier && A.cashier.atPost);
+  A.sellPad.mesh.material.map = seller ? sellTexOn : sellTexOff;
+  const front = A.customers[0];
+  if (!front || !front.arrived || !seller || A.counter.count === 0 || A.sellTimer > 0) return;
   if (front.stack.total >= front.want) return;
-  sellTimer = 0.13;
-  const m = counterStack.pop();
+  A.sellTimer = 0.12;
+  const m = A.counter.pop();
   fly(m, front.stack.reserve(), 0.28, 0.8, (mm) => {
     front.stack.receive(mm);
     sfx('drop');
     if (front.stack.count >= front.want && !front.paid) {
       front.paid = true;
-      payOut(front.want * state.price);
-      queue.splice(queue.indexOf(front), 1);
+      payOut(A, front.want * priceOf(A.product));
+      A.customers.splice(A.customers.indexOf(front), 1);
       front.bubble.visible = false;
-      leaving.push(front);
+      A.leaving.push(front);
     }
   });
 }
@@ -894,37 +1099,59 @@ function updateSelling(dt) {
 // ---------------------------------------------------------------------
 //  Sblocchi (pedane da pagare)
 // ---------------------------------------------------------------------
-const SHOP = { x: -1.8, z: 5.4 };   // pedana dei potenziamenti
-const HELP = { x: -8.6, z: 5.6 };   // dove arrivano i giardinieri
+const shopPos = (k) => ({ x: -1.8, z: czOf(k) + 5.4 });
+const U = {
+  bed: (k, s, cost) => ({ name: 'Nuova aiuola', desc: PRODUCTS[AREA_PRODUCTS[k]].name, icon: AREA_PRODUCTS[k], cost,
+    ...bedPos(k, s), apply: (i) => addBed(areas[k], s, i) }),
+  gardener: (k, s, cost) => ({ name: 'Giardiniere', desc: 'per questa aiuola', cost, ...bedPadPos(k, s),
+    apply: (i) => hireGardener(areas[k].beds[s], i) }),
+  plow: (k, s, cost) => ({ name: 'Aratro', desc: 'raccolto doppio!', cost, ...bedPadPos(k, s),
+    apply: (i) => buildPlow(areas[k].beds[s], i) }),
+  cashier: (k, cost) => ({ name: 'Cassiera', desc: 'vende al posto tuo', cost, x: -3.4, z: czOf(k) + 4.4,
+    apply: (i) => hireCashier(areas[k], -3.4, czOf(k) + 4.4, i) }),
+  area: (k, cost) => ({ name: 'Nuovo spiazzale', desc: PRODUCTS[AREA_PRODUCTS[k]].name, icon: AREA_PRODUCTS[k], cost,
+    x: 0, z: czOf(k - 1) - 7.4, apply: (i) => buildArea(k, i) }),
+  shop: (k, name, desc, cost, fn) => ({ name, desc, cost, ...shopPos(k), apply: fn }),
+};
 const UPGRADES = [
-  { name: 'Nuova aiuola', cost: 20, x: -5.5, z: -4.9, apply: (i) => addBed(-5.5, -4.9, i) },
-  { name: 'Braccia forti', desc: '+10 fiori in braccio', cost: 40, ...SHOP, apply: () => { state.capacity += 10; } },
-  { name: 'Cassiera', desc: 'vende al posto tuo', cost: 75, x: -3.4, z: 4.4, apply: (i) => hireCashier(-3.4, 4.4, i) },
-  { name: 'Giardiniere', desc: 'raccoglie i fiori', cost: 120, ...HELP, apply: (i) => hireGardener(HELP.x, HELP.z, i) },
-  { name: 'Nuova aiuola', cost: 200, x: -10.5, z: 1.3, apply: (i) => addBed(-10.5, 1.3, i) },
-  { name: 'Carta regalo', desc: 'fiori +$1', cost: 300, ...SHOP, apply: () => { state.price += 1; } },
-  { name: 'Giardiniere', desc: 'raccoglie i fiori', cost: 450, ...HELP, apply: (i) => hireGardener(HELP.x, HELP.z, i) },
-  { name: 'Nuova aiuola', cost: 650, x: -10.5, z: -4.9, apply: (i) => addBed(-10.5, -4.9, i) },
-  { name: 'Scarpe veloci', desc: 'corri più veloce', cost: 900, ...SHOP, apply: () => { state.speed *= 1.25; } },
-  { name: 'Cesti grandi', desc: 'aiutanti +4 fiori', cost: 1200, ...SHOP, apply: () => { state.gardenerCap += 4; } },
-  { name: 'Giardiniere', desc: 'raccoglie i fiori', cost: 1600, ...HELP, apply: (i) => hireGardener(HELP.x, HELP.z, i) },
-  { name: 'Fontana', desc: 'il giardino più bello!', cost: 2500, x: 4.6, z: 5.6, apply: (i) => buildFountain(4.6, 5.6, i) },
-  { name: 'Braccia forti', desc: '+10 fiori in braccio', cost: 3200, ...SHOP, apply: () => { state.capacity += 10; } },
+  // Spiazzale 1: rose
+  U.bed(0, 1, 20),
+  U.cashier(0, 40),
+  U.gardener(0, 0, 70),
+  U.shop(0, 'Braccia forti', '+10 in braccio', 100, () => { state.capacity += 10; }),
+  U.plow(0, 0, 140),
+  U.gardener(0, 1, 190),
+  U.plow(0, 1, 250),
+  // Spiazzale 2: margherite
+  U.area(1, 350),
+  U.bed(1, 1, 420),
+  U.cashier(1, 500),
+  U.gardener(1, 0, 600),
+  U.shop(1, 'Scarpe veloci', 'corri più veloce', 700, () => { state.speed *= 1.25; }),
+  U.plow(1, 0, 800),
+  U.gardener(1, 1, 950),
+  U.plow(1, 1, 1100),
+  U.shop(1, 'Carta regalo', 'tutto costa +$1', 1300, () => { state.priceBonus += 1; }),
+  // Spiazzale 3: fragole
+  U.area(2, 1600),
+  U.bed(2, 1, 1900),
+  U.cashier(2, 2200),
+  U.gardener(2, 0, 2600),
+  U.plow(2, 0, 3000),
+  U.shop(2, 'Cesti grandi', 'aiutanti +4', 3400, () => { state.gardenerCap += 4; }),
+  U.gardener(2, 1, 3800),
+  U.plow(2, 1, 4300),
+  U.shop(2, 'Braccia forti', '+10 in braccio', 5000, () => { state.capacity += 10; }),
+  { name: 'Fontana', desc: 'il giardino più bello!', cost: 6000, x: 4.6, z: 5.6, apply: (i) => buildFountain(4.6, 5.6, i) },
 ];
 function getUpgrade(i) {
   if (i < UPGRADES.length) return UPGRADES[i];
   const k = i - UPGRADES.length;
-  return { name: 'Fiori più belli', desc: 'fiori +$1', cost: Math.round(4000 * Math.pow(1.5, k) / 10) * 10,
-    ...SHOP, apply: () => { state.price += 1; } };
+  return U.shop(AREA_PRODUCTS.length - 1, 'Prezzi più alti', 'tutto costa +$1',
+    Math.round(7000 * Math.pow(1.5, k) / 10) * 10, () => { state.priceBonus += 1; });
 }
 
-// Ostacoli: rettangoli (eventualmente ruotati) { x, z, hw, hd, rot }
-const obstacles = [
-  { x: COUNTER.x, z: COUNTER.z, hw: COUNTER.w / 2 + 0.1, hd: COUNTER.d / 2 + 0.1, rot: COUNTER.rot },
-  { x: 6.4, z: -5.6, hw: 2.1, hd: 0.6, rot: 0 },
-  { x: 8.6, z: 4.6, hw: 0.7, hd: 1.8, rot: 0 },
-];
-
+let fountain = null;
 function buildFountain(x, z, instant) {
   const g = new THREE.Group();
   g.position.set(x, 0, z);
@@ -947,7 +1174,6 @@ function buildFountain(x, z, instant) {
   obstacles.push({ x, z, hw: 1.7, hd: 1.7, rot: 0 });
   if (!instant) { popIn(g); burst(x, z, 80); }
 }
-let fountain = null;
 
 let currentPad = null;
 function drawPad(ctx, w, h, up, remaining) {
@@ -972,7 +1198,11 @@ function drawPad(ctx, w, h, up, remaining) {
   if (up.desc) {
     ctx.font = '700 24px "Trebuchet MS", Arial, sans-serif';
     ctx.fillStyle = '#4b5a3e';
-    ctx.fillText(up.desc, w / 2, 92, w - 44);
+    ctx.fillText(up.desc, w / 2 + (up.icon ? 14 : 0), 92, w - 70);
+    if (up.icon) {
+      const tw = Math.min(ctx.measureText(up.desc).width, w - 70);
+      drawProduct(ctx, up.icon, w / 2 - tw / 2 - 6, 92, 0.65);
+    }
   }
   drawBillIcon(ctx, 70, 160, 1.3);
   ctx.font = '900 52px "Trebuchet MS", Arial, sans-serif';
@@ -992,7 +1222,7 @@ function spawnPad(index, paid = 0) {
   const pad = makePadMesh(2.5, tex);
   pad.group.position.set(up.x, 0.04, up.z);
   popIn(pad.group);
-  currentPad = { up, index, paid, canvas: c, tex, ...pad, shown: -1, stand: 0, acc: 0, fx: 0 };
+  currentPad = { up, index, paid: Math.min(paid, up.cost - 1), canvas: c, tex, ...pad, shown: -1, stand: 0, acc: 0, fx: 0 };
   redrawPad();
 }
 function redrawPad() {
@@ -1070,34 +1300,43 @@ function setHint(text) {
   hintEl.classList.toggle('show', !!text);
 }
 const arrowPos = new THREE.Vector3();
+function nearestTo(pp, list) {
+  let best = null, bd = Infinity;
+  for (const it of list) {
+    const d = distXZ(pp, it.x, it.z);
+    if (d < bd) { bd = d; best = it; }
+  }
+  return best;
+}
 function updateGuide(t) {
   const pp = player.group.position;
   let target = null, hint = '';
   const pad = currentPad;
   const padLeft = pad ? pad.up.cost - pad.paid : Infinity;
   const tutorial = state.stage < 4;
+  const top = playerStack.items[playerStack.count - 1];
+  const sellArea = top && areaOfProduct(top.userData.product);
   if (pad && state.money >= padLeft) {
-    target = [pad.up.x, pad.up.z]; hint = 'Sblocca: ' + pad.up.name + '!';
-  } else if (tutorial && cashStack.count > 0) {
-    target = [CASH.x, CASH.z]; hint = 'Raccogli i soldi!';
-  } else if (tutorial && playerStack.total > 0 && counterStack.total < COUNTER_CAP) {
-    target = [SELL.x, SELL.z]; hint = 'Porta i fiori al bancone!';
-  } else if (tutorial && !cashier && counterStack.count > 0 && queue[0] && queue[0].arrived) {
-    target = [SELL.x, SELL.z]; hint = 'Resta su VENDI per servire i clienti!';
+    target = pad.up; hint = 'Sblocca: ' + pad.up.name + '!';
+  } else if (tutorial && areas[0].cashStack.count > 0) {
+    target = areas[0].cash; hint = 'Raccogli i soldi!';
+  } else if (tutorial && sellArea && sellArea.counter.total < COUNTER_CAP) {
+    target = sellArea.sell; hint = 'Porta i fiori al bancone!';
+  } else if (tutorial && !areas[0].cashier && areas[0].counter.count > 0 && areas[0].customers[0]?.arrived) {
+    target = areas[0].sell; hint = 'Resta su VENDI per servire i clienti!';
   } else if (tutorial) {
-    let best = null, bd = Infinity;
-    for (const pl of plants) {
-      if (!pl.grown) continue;
-      const d = distXZ(pp, pl.x, pl.z);
-      if (d < bd) { bd = d; best = pl; }
-    }
-    if (best) { target = [best.x, best.z]; hint = 'Raccogli i fiori!'; }
+    target = nearestTo(pp, plants.filter((p) => p.grown));
+    if (target) hint = 'Raccogli i fiori!';
+  } else if (!pad || state.money < padLeft) {
+    // Dopo il tutorial: segnala la pila di soldi più grande se è bella alta
+    const rich = areas.filter((a) => a.cashStack.count >= 40).sort((a, b) => b.cashStack.count - a.cashStack.count)[0];
+    if (rich) target = rich.cash;
   }
   // Nasconde la freccia quando ci sei già sopra
-  if (target && distXZ(pp, target[0], target[1]) < 1.0) target = null;
+  if (target && distXZ(pp, target.x, target.z) < 1.0) target = null;
   arrow.visible = !!target;
   if (target) {
-    arrowPos.set(target[0], 2.6 + Math.sin(t * 6) * 0.25, target[1]);
+    arrowPos.set(target.x, 2.6 + Math.sin(t * 6) * 0.25, target.z);
     arrow.position.lerp(arrowPos, arrow.userData.init ? 0.2 : 1);
     arrow.userData.init = true;
     arrow.rotation.y += 0.02;
@@ -1190,52 +1429,57 @@ function updatePlayer(dt) {
   if (speed > 0.3) turnTowards(player, vel.x, vel.y, dt, 14);
   animateChar(player, speed, dt, playerStack.total > 0);
 
-  // La torre di fiori ondeggia quando corri
+  // La torre di prodotti ondeggia quando corri
   lean += ((speed / state.speed) - lean) * Math.min(1, dt * 5);
   playerStack.items.forEach((m, i) => {
     m.position.z = -lean * 0.0035 * i * i;
-    m.position.x = 0.36 + Math.sin(performance.now() / 300 + i * 0.3) * 0.004 * i * lean;
+    m.position.x = Math.sin(performance.now() / 300 + i * 0.3) * 0.004 * i * lean;
   });
   maxLabel.visible = playerStack.total >= state.capacity;
-  maxLabel.position.set(0, 1.5 + Math.max(playerStack.count, 3) * 0.2 + 0.4, 0.42);
+  maxLabel.position.set(0, 1.5 + Math.max(playerStack.count, 3) * ITEM_H + 0.4, 0.42);
 
   // Raccolta
   harvestTimer -= dt;
-  if (harvestTimer <= 0 && playerStack.total < state.capacity) {
+  const room = state.capacity - playerStack.total;
+  if (harvestTimer <= 0 && room > 0) {
     for (const pl of plants) {
       if (pl.grown && pl.grow >= 1 && distXZ(p, pl.x, pl.z) < 0.95) {
         if (pl.reservedBy) pl.reservedBy.target = null;
-        const m = harvest(pl);
-        fly(m, playerStack.reserve(), 0.22, 0.6, (mm) => playerStack.receive(mm));
+        for (const m of harvest(pl, room)) {
+          fly(m, playerStack.reserve(), 0.22, 0.6, (mm) => playerStack.receive(mm));
+        }
         sfx('pick');
         harvestTimer = 0.06;
         break;
       }
     }
   }
-  // Consegna al bancone
   depositTimer -= dt;
-  if (depositTimer <= 0 && playerStack.count > 0 && counterStack.total < COUNTER_CAP &&
-      distXZ(p, SELL.x, SELL.z) < SELL.r + 0.3) {
-    depositTimer = 0.07;
-    const m = playerStack.pop();
-    fly(m, counterStack.reserve(), 0.25, 0.7, (mm) => counterStack.receive(mm));
-    sfx('drop');
-  }
-  // Raccolta soldi
   collectTimer -= dt;
-  if (collectTimer <= 0 && cashStack.count > 0 && distXZ(p, CASH.x, CASH.z) < CASH.r) {
-    collectTimer = 0.025;
-    const n = Math.min(cashStack.count, Math.max(1, Math.ceil(cashStack.count / 25)));
-    for (let i = 0; i < n; i++) {
-      const m = cashStack.pop();
-      const value = m.userData.value + cashBonus;
-      cashBonus = 0;
-      fly(m, () => _v.copy(player.group.position).setY(1.6), 0.22, 0.6, () => {
-        state.money += value;
-        updateMoney(true);
-        sfx('coin');
-      });
+  for (const A of areas) {
+    // Consegna al bancone (solo i prodotti di questo spiazzale)
+    if (depositTimer <= 0 && A.counter.total < COUNTER_CAP && distXZ(p, A.sell.x, A.sell.z) < A.sell.r + 0.3) {
+      const m = playerStack.takeWhere((it) => it.userData.product === A.product);
+      if (m) {
+        depositTimer = 0.07;
+        fly(m, A.counter.reserve(), 0.25, 0.7, (mm) => A.counter.receive(mm));
+        sfx('drop');
+      }
+    }
+    // Raccolta soldi
+    if (collectTimer <= 0 && A.cashStack.count > 0 && distXZ(p, A.cash.x, A.cash.z) < A.cash.r) {
+      collectTimer = 0.025;
+      const n = Math.min(A.cashStack.count, Math.max(1, Math.ceil(A.cashStack.count / 25)));
+      for (let i = 0; i < n; i++) {
+        const m = A.cashStack.pop();
+        const value = m.userData.value + A.cashBonus;
+        A.cashBonus = 0;
+        fly(m, () => _v.copy(player.group.position).setY(1.6), 0.22, 0.6, () => {
+          state.money += value;
+          updateMoney(true);
+          sfx('coin');
+        });
+      }
     }
   }
 }
@@ -1260,10 +1504,11 @@ muteBtn.addEventListener('click', () => {
   muted = !muted;
   initAudio();
   refreshMute();
-  try { localStorage.setItem(SAVE_KEY + '.muted', muted ? '1' : '0'); } catch { }
+  try { localStorage.setItem('flowerTycoon.muted', muted ? '1' : '0'); } catch { }
 });
 const menu = document.getElementById('menu');
 let paused = true;
+let resetting = false;
 document.getElementById('menuBtn').addEventListener('click', () => { paused = true; menu.classList.remove('hidden'); });
 document.getElementById('resume').addEventListener('click', () => { paused = false; menu.classList.add('hidden'); });
 document.getElementById('reset').addEventListener('click', () => {
@@ -1272,7 +1517,6 @@ document.getElementById('reset').addEventListener('click', () => {
   resetting = true;
   location.reload();
 });
-let resetting = false;
 document.getElementById('play').addEventListener('click', () => {
   initAudio();
   document.getElementById('start').classList.add('hidden');
@@ -1284,7 +1528,7 @@ addEventListener('pagehide', () => { if (!resetting) save(); });
 // ---------------------------------------------------------------------
 //  Avvio: costruisce il mondo dal salvataggio
 // ---------------------------------------------------------------------
-addBed(-5.5, 1.3, true);
+buildArea(0, true);
 if (loaded && typeof loaded.stage === 'number') {
   state.money = Math.max(0, loaded.money | 0);
   for (let i = 0; i < loaded.stage; i++) getUpgrade(i).apply(true);
@@ -1292,8 +1536,6 @@ if (loaded && typeof loaded.stage === 'number') {
 }
 spawnPad(state.stage, loaded ? Math.max(0, loaded.padPaid | 0) : 0);
 updateMoney();
-// Qualche fiore già sul bancone per far partire subito le vendite
-for (let i = 0; i < 4; i++) { const m = makeBouquet(); counterStack.add(m); }
 setInterval(() => { if (!paused) save(); }, 4000);
 
 // ---------------------------------------------------------------------
@@ -1308,15 +1550,12 @@ function frame() {
     elapsed += dt;
     updatePlayer(dt);
     updatePlants(dt);
+    updatePlows(dt);
     updateGardeners(dt);
-    updateCustomers(dt);
-    updateSelling(dt);
+    for (const A of areas) { updateCustomers(A, dt); updateSelling(A, dt); }
     updatePad(dt);
     updateGuide(elapsed);
-    if (fountain) {
-      const jet = fountain.userData.jet;
-      jet.scale.y = 1 + Math.sin(elapsed * 8) * 0.12;
-    }
+    if (fountain) fountain.userData.jet.scale.y = 1 + Math.sin(elapsed * 8) * 0.12;
   }
   updateFlyers(dt);
   updateFx(dt);
@@ -1332,4 +1571,6 @@ function frame() {
 frame();
 
 // Utile per i test automatici
-window.__game = { debug, state, player, queue, plants, counterStack, cashStack, get pad() { return currentPad; } };
+window.__game = {
+  debug, state, player, plants, areas, playerStack, get pad() { return currentPad; },
+};
