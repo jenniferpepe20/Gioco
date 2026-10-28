@@ -1,0 +1,54 @@
+<!doctype html>
+<html lang="it">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no, viewport-fit=cover">
+  <meta name="theme-color" content="#5fb43a">
+  <meta name="apple-mobile-web-app-capable" content="yes">
+  <meta name="mobile-web-app-capable" content="yes">
+  <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+  <meta name="apple-mobile-web-app-title" content="Flower Tycoon">
+  <title>Flower Tycoon</title>
+  <link rel="manifest" href="manifest.json">
+  <link rel="icon" href="icons/icon-192.png">
+  <link rel="apple-touch-icon" href="icons/icon-192.png">
+  <link rel="stylesheet" href="style.css">
+</head>
+<body>
+  <canvas id="game"></canvas>
+
+  <div id="hud">
+    <div id="logo">Flower<span>Tycoon</span></div>
+    <div id="money"><i class="bill"></i><b id="moneyText">0</b></div>
+    <div id="hint"></div>
+    <button id="mute" aria-label="Audio">🔊</button>
+    <button id="menuBtn" aria-label="Menu">⚙️</button>
+  </div>
+
+  <div id="joy"><div id="knob"></div></div>
+
+  <div id="menu" class="overlay hidden">
+    <div class="panel">
+      <h2>Pausa</h2>
+      <button id="resume" class="big">Continua</button>
+      <button id="reset" class="small danger">Ricomincia da zero</button>
+    </div>
+  </div>
+
+  <div id="start" class="overlay">
+    <div class="panel">
+      <div class="title">Flower<span>Tycoon</span></div>
+      <p>Raccogli i fiori, vendili ai clienti,<br>incassa i soldi e fai crescere il tuo giardino!</p>
+      <button id="play" class="big">GIOCA</button>
+      <p class="tip">Trascina il dito per muoverti</p>
+    </div>
+  </div>
+
+  <script type="module" src="game.js"></script>
+  <script>
+    if ('serviceWorker' in navigator) {
+      addEventListener('load', () => navigator.serviceWorker.register('sw.js').catch(() => {}));
+    }
+  </script>
+</body>
+</html>
