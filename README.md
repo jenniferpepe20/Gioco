@@ -17,23 +17,29 @@ soldi per far crescere il tuo giardino.
 
 ### Progressione
 
-Il giardino è diviso in **spiazzali**, ognuno con il suo prodotto, il suo bancone e la sua fila:
+Il giardino è diviso in **spiazzali**, ognuno con il suo prodotto, il suo bancone e la sua fila.
 
+**I fiori** (come nella pubblicità):
 1. 🌹 **Rose** ($2): lo spiazzale iniziale
 2. 🌼 **Margherite** ($3): si apre il cancello in alto
 3. 🍓 **Fragole** ($5): vendute in cassette
-4. 🌷 **Tulipani** ($8)
-5. 🌻 **Girasoli** ($12)
-6. 🫐 **Mirtilli** ($18): vendute in cassette
 
-In ogni spiazzale sblocchi la seconda aiuola e la **cassiera**, poi per **ogni aiuola**:
-- il **giardiniere**, che raccoglie solo quell'aiuola e porta tutto al bancone;
-- l'**aratro**, un trattorino che dà raccolto doppio e fa ricrescere più in fretta.
+Qui sblocchi la seconda aiuola e la **cassiera**, poi per ogni aiuola il **giardiniere**
+(raccoglie e porta al bancone) e l'**aratro** (raccolto doppio, ricrescita più veloce).
+Alla fine c'è la fontana.
 
-Più aiutanti lavorano in uno spiazzale, più clienti arrivano, quindi c'è sempre
-qualcosa da fare: aiutare dove i clienti aspettano, raccogliere i soldi e aprire
-lo spiazzale successivo. Ci sono anche i potenziamenti (braccia forti, scarpe veloci,
-carta regalo, cesti grandi) e la fontana.
+**La fattoria**, dove ogni spiazzale funziona in modo diverso:
+
+4. 🐔 **Pollaio** ($8 le uova): le galline girano nel recinto e fanno le uova per terra.
+   Sblocchi altre galline, il **mangime** (più uova) e la **contadina** che le raccoglie.
+5. 🐄 **Stalla** ($12 il latte): tagli il fieno nel campo e lo porti alla **mangiatoia**;
+   le mucche mangiano e fanno due bottiglie di latte. Sblocchi altre mucche, il **fattore**
+   (porta il fieno), il **nastro trasportatore** (latte al bancone) e il **trattore** per il fieno.
+6. 🎂 **Pasticceria** ($40 le torte): porti **uova + latte** al tavolo del forno e lui sforna
+   le torte. Sblocchi il **pasticcere**, il **forno veloce** e il **furgoncino**, che passa
+   dal pollaio e dalla stalla a prendere uova e latte e li porta al forno.
+
+Più aiutanti lavorano in uno spiazzale, più clienti arrivano.
 
 ### Nuovo giardino ⭐
 

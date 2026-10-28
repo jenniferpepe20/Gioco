@@ -22,7 +22,16 @@ const fmt = (n) => n >= 1e6 ? (n / 1e6).toFixed(1).replace('.0', '') + 'M'
 // ---------------------------------------------------------------------
 const AREA_GAP = 19.4;
 const czOf = (k) => -AREA_GAP * k;
-const AREA_PRODUCTS = ['rose', 'daisy', 'straw', 'tulip', 'sun', 'blue'];
+// I primi tre spiazzali sono di fiori (aiuole), poi c'è la fattoria: ognuno funziona in modo diverso
+const AREA_DEFS = [
+  { product: 'rose', kind: 'beds' },
+  { product: 'daisy', kind: 'beds' },
+  { product: 'straw', kind: 'beds' },
+  { product: 'egg', kind: 'coop', title: 'Pollaio', tip: 'Raccogli le uova nel recinto!', tipAt: (A) => ({ x: -7.5, z: A.cz - 1 }) },
+  { product: 'milk', kind: 'barn', title: 'Stalla', tip: 'Porta il fieno alla mangiatoia!', tipAt: (A) => A.barn.trough },
+  { product: 'cake', kind: 'bakery', title: 'Pasticceria', tip: 'Porta uova e latte al forno!', tipAt: (A) => A.bakery.input },
+];
+const AREA_PRODUCTS = AREA_DEFS.map((d) => d.product);
 const COUNTER_SIZE = { w: 3.2, d: 1.2 };
 const BED_SLOTS = [{ x: -5.5, dz: 1.3 }, { x: -5.5, dz: -4.9 }];
 const bedPos = (k, s) => ({ x: BED_SLOTS[s].x, z: czOf(k) + BED_SLOTS[s].dz });
@@ -139,39 +148,86 @@ const STRAW_ITEM = partsGeo([
   ...[-0.18, 0, 0.18].flatMap((x) => [-0.09, 0.09].map((z) => (
     { g: new THREE.IcosahedronGeometry(0.075, 0), m: M4(x + rand(-0.02, 0.02), 0.17, z), c: 0xe8283c }))),
 ]);
-const TULIP_UP = bouquetGeo(0xfff3d6, 0xff8a3d,
-  [[0, 0.66, 0, 0xe8283c], [0.11, 0.58, 0.08, 0xffb21f], [-0.11, 0.58, 0.06, 0xff6b2c], [0.02, 0.58, -0.12, 0xb84ad9]]
-    .flatMap(([x, y, z, c]) => [
-      { g: new THREE.CylinderGeometry(0.1, 0.06, 0.18, 6), m: M4(x, y, z), c },
-      { g: new THREE.ConeGeometry(0.1, 0.08, 6), m: M4(x, y + 0.12, z), c },
-    ]));
-const SUN_UP = bouquetGeo(0xd9b382, 0x3f9e35,
-  [[0, 0.72, 0.02, -0.5], [0.13, 0.6, 0.06, -0.3], [-0.13, 0.6, 0.0, -0.3]].flatMap(([x, y, z, t]) => [
-    { g: new THREE.CylinderGeometry(0.17, 0.17, 0.03, 12), m: M4(x, y, z, t), c: 0xffcc1a },
-    { g: new THREE.CylinderGeometry(0.08, 0.08, 0.05, 10), m: M4(x, y + 0.01, z + 0.01, t), c: 0x6b3a12 },
-  ]));
-const BLUE_PLANT = partsGeo([
-  { g: new THREE.IcosahedronGeometry(0.24, 0), m: M4(0, 0.28, 0, 0, 0, 0, 1, 0.8, 1), c: 0x3c8f3a },
-  { g: new THREE.IcosahedronGeometry(0.18, 0), m: M4(0.12, 0.42, 0.05, 0, 1, 0, 1, 0.8, 1), c: 0x4aa244 },
-  ...[[0.2, 0.3, 0.12], [-0.18, 0.28, 0.16], [0.05, 0.36, 0.22], [-0.1, 0.5, 0.05], [0.18, 0.46, -0.1], [-0.2, 0.36, -0.12]]
-    .map(([x, y, z]) => ({ g: new THREE.IcosahedronGeometry(0.06, 0), m: M4(x, y, z), c: 0x3b4fb8 })),
+// Fattoria
+const EGG_GEO = new THREE.SphereGeometry(0.09, 10, 8).scale(1, 1.3, 1).translate(0, 0.11, 0);
+const EGG_ITEM = partsGeo([
+  { g: new THREE.BoxGeometry(0.52, 0.08, 0.36), m: M4(0, 0.04, 0), c: 0xcdb88f },
+  ...[-0.16, 0, 0.16].flatMap((x) => [-0.09, 0.09].map((z) => (
+    { g: new THREE.SphereGeometry(0.07, 8, 6), m: M4(x, 0.12, z, 0, 0, 0, 1, 1.15, 1), c: 0xfff3dc }))),
 ]);
-const BLUE_ITEM = partsGeo([
-  { g: new THREE.BoxGeometry(0.5, 0.12, 0.36), m: M4(0, 0.06, 0), c: 0x6fb7e8 },
-  { g: new THREE.BoxGeometry(0.52, 0.03, 0.38), m: M4(0, 0.12, 0), c: 0x4f97c8 },
-  ...[-0.16, -0.05, 0.06, 0.17].flatMap((x) => [-0.1, 0, 0.1].map((z) => (
-    { g: new THREE.IcosahedronGeometry(0.05, 0), m: M4(x, 0.16, z + rand(-0.02, 0.02)), c: 0x3b4fb8 }))),
+const BOTTLE_UP = partsGeo([
+  { g: new THREE.CylinderGeometry(0.11, 0.11, 0.36, 12), m: M4(0, 0.18, 0), c: 0xffffff },
+  { g: new THREE.CylinderGeometry(0.112, 0.112, 0.1, 12), m: M4(0, 0.2, 0), c: 0x3f8ee8 },
+  { g: new THREE.CylinderGeometry(0.06, 0.1, 0.1, 12), m: M4(0, 0.41, 0), c: 0xffffff },
+  { g: new THREE.CylinderGeometry(0.065, 0.065, 0.05, 12), m: M4(0, 0.48, 0), c: 0x2f6fd0 },
+]);
+const CAKE_ITEM = partsGeo([
+  { g: new THREE.CylinderGeometry(0.27, 0.27, 0.02, 18), m: M4(0, 0.01, 0), c: 0xffffff },
+  { g: new THREE.CylinderGeometry(0.22, 0.22, 0.12, 18), m: M4(0, 0.08, 0), c: 0xf7a1c4 },
+  { g: new THREE.CylinderGeometry(0.225, 0.225, 0.035, 18), m: M4(0, 0.15, 0), c: 0xfff6ee },
+  { g: new THREE.SphereGeometry(0.045, 8, 6), m: M4(0, 0.2, 0), c: 0xd8193a },
+]);
+const HAY_ITEM = partsGeo([
+  { g: new THREE.BoxGeometry(0.54, 0.19, 0.34), m: M4(0, 0.095, 0), c: 0xe8c25a },
+  { g: new THREE.BoxGeometry(0.04, 0.2, 0.35), m: M4(-0.14, 0.1, 0), c: 0x9c6a3c },
+  { g: new THREE.BoxGeometry(0.04, 0.2, 0.35), m: M4(0.14, 0.1, 0), c: 0x9c6a3c },
+]);
+const HAY_PLANT = partsGeo([0, 1, 2, 3, 4, 5].map((i) => ({
+  g: new THREE.ConeGeometry(0.07, 0.45, 4),
+  m: M4(Math.cos(i) * 0.1, 0.22, Math.sin(i) * 0.1, Math.sin(i * 2) * 0.3, 0, Math.cos(i * 3) * 0.3),
+  c: i % 2 ? 0xd8c04a : 0xb7b23a,
+})));
+const CHICKEN_GEO = partsGeo([
+  { g: new THREE.SphereGeometry(0.2, 12, 8), m: M4(0, 0.32, 0, 0, 0, 0, 0.9, 0.85, 1.15), c: 0xfdfdf7 },
+  { g: new THREE.ConeGeometry(0.1, 0.22, 6), m: M4(0, 0.44, -0.22, -0.8), c: 0xf2f2ec },
+  { g: new THREE.SphereGeometry(0.1, 8, 6), m: M4(0.18, 0.33, 0, 0, 0, 0, 0.3, 0.6, 1), c: 0xe8e8e2 },
+  { g: new THREE.SphereGeometry(0.1, 8, 6), m: M4(-0.18, 0.33, 0, 0, 0, 0, 0.3, 0.6, 1), c: 0xe8e8e2 },
+  { g: new THREE.SphereGeometry(0.11, 10, 8), m: M4(0, 0.55, 0.17), c: 0xfdfdf7 },
+  { g: new THREE.BoxGeometry(0.04, 0.08, 0.13), m: M4(0, 0.67, 0.17), c: 0xe8283c },
+  { g: new THREE.SphereGeometry(0.03, 6, 4), m: M4(0, 0.47, 0.26), c: 0xe8283c },
+  { g: new THREE.ConeGeometry(0.035, 0.09, 5), m: M4(0, 0.54, 0.3, Math.PI / 2), c: 0xf5a623 },
+  { g: new THREE.SphereGeometry(0.018, 5, 4), m: M4(0.06, 0.58, 0.25), c: 0x222222 },
+  { g: new THREE.SphereGeometry(0.018, 5, 4), m: M4(-0.06, 0.58, 0.25), c: 0x222222 },
+  { g: new THREE.CylinderGeometry(0.02, 0.02, 0.16), m: M4(0.07, 0.08, 0), c: 0xf5a623 },
+  { g: new THREE.CylinderGeometry(0.02, 0.02, 0.16), m: M4(-0.07, 0.08, 0), c: 0xf5a623 },
+]);
+const COW_GEO = partsGeo([
+  { g: new THREE.BoxGeometry(0.64, 0.56, 1.15), m: M4(0, 0.78, 0), c: 0xfafafa },
+  { g: new THREE.BoxGeometry(0.02, 0.26, 0.36), m: M4(0.325, 0.82, 0.12), c: 0x2a2a2a },
+  { g: new THREE.BoxGeometry(0.02, 0.3, 0.3), m: M4(-0.325, 0.72, -0.26), c: 0x2a2a2a },
+  { g: new THREE.BoxGeometry(0.3, 0.02, 0.34), m: M4(0.1, 1.065, -0.2), c: 0x2a2a2a },
+  { g: new THREE.BoxGeometry(0.38, 0.38, 0.42), m: M4(0, 1.0, 0.72), c: 0xfafafa },
+  { g: new THREE.BoxGeometry(0.32, 0.2, 0.12), m: M4(0, 0.9, 0.96), c: 0xf4a7b9 },
+  { g: new THREE.ConeGeometry(0.04, 0.15, 6), m: M4(0.13, 1.25, 0.66), c: 0xf2e6c8 },
+  { g: new THREE.ConeGeometry(0.04, 0.15, 6), m: M4(-0.13, 1.25, 0.66), c: 0xf2e6c8 },
+  { g: new THREE.BoxGeometry(0.14, 0.06, 0.1), m: M4(0.26, 1.08, 0.64), c: 0x2a2a2a },
+  { g: new THREE.BoxGeometry(0.14, 0.06, 0.1), m: M4(-0.26, 1.08, 0.64), c: 0x2a2a2a },
+  { g: new THREE.SphereGeometry(0.03, 6, 4), m: M4(0.12, 1.06, 0.93), c: 0x222222 },
+  { g: new THREE.SphereGeometry(0.03, 6, 4), m: M4(-0.12, 1.06, 0.93), c: 0x222222 },
+  ...[[0.2, 0.38], [-0.2, 0.38], [0.2, -0.4], [-0.2, -0.4]].map(([x, z]) =>
+    ({ g: new THREE.BoxGeometry(0.15, 0.52, 0.15), m: M4(x, 0.26, z), c: 0xfafafa })),
+  { g: new THREE.SphereGeometry(0.11, 8, 6), m: M4(0, 0.48, -0.25), c: 0xf4a7b9 },
+  { g: new THREE.CylinderGeometry(0.025, 0.025, 0.5), m: M4(0, 0.78, -0.62, 0.3), c: 0xeeeeee },
+]);
+const VAN_GEO = partsGeo([
+  { g: new THREE.BoxGeometry(1.0, 1.0, 1.7), m: M4(0, 0.75, -0.2), c: 0xffffff },
+  { g: new THREE.BoxGeometry(1.02, 0.18, 1.72), m: M4(0, 0.6, -0.2), c: 0xff6fa0 },
+  { g: new THREE.BoxGeometry(1.0, 0.75, 0.7), m: M4(0, 0.62, 0.95), c: 0x2f7fd0 },
+  { g: new THREE.BoxGeometry(0.9, 0.32, 0.05), m: M4(0, 0.78, 1.31), c: 0xbfe9ff },
+  ...[[0.5, 0.85], [-0.5, 0.85], [0.5, -0.6], [-0.5, -0.6]].map(([x, z]) =>
+    ({ g: new THREE.CylinderGeometry(0.2, 0.2, 0.14, 12), m: M4(x, 0.2, z, 0, 0, Math.PI / 2), c: 0x262626 })),
 ]);
 // Un mazzo "sdraiato" per le pile: lungo l'asse x, base a y=0
-const laid = (g) => g.clone().rotateZ(Math.PI / 2).translate(0.37, 0.21, 0);
+const laid = (g, len = 0.75, r = 0.21) => g.clone().rotateZ(Math.PI / 2).translate(len / 2, r, 0);
 
 const PRODUCTS = {
   rose: { name: 'Rose', price: 2, plant: ROSE_UP, item: laid(ROSE_UP), color: '#ff4f84' },
   daisy: { name: 'Margherite', price: 3, plant: DAISY_UP, item: laid(DAISY_UP), color: '#ffffff' },
   straw: { name: 'Fragole', price: 5, plant: STRAW_PLANT, item: STRAW_ITEM, color: '#e8283c' },
-  tulip: { name: 'Tulipani', price: 8, plant: TULIP_UP, item: laid(TULIP_UP), color: '#ff6b2c' },
-  sun: { name: 'Girasoli', price: 12, plant: SUN_UP, item: laid(SUN_UP), color: '#ffcc1a' },
-  blue: { name: 'Mirtilli', price: 18, plant: BLUE_PLANT, item: BLUE_ITEM, color: '#3b4fb8' },
+  egg: { name: 'Uova', price: 8, plant: EGG_GEO, item: EGG_ITEM },
+  milk: { name: 'Latte', price: 12, item: laid(BOTTLE_UP, 0.52, 0.11) },
+  cake: { name: 'Torte', price: 40, item: CAKE_ITEM, maxWant: 3 },
+  hay: { name: 'Fieno', price: 0, plant: HAY_PLANT, item: HAY_ITEM },
 };
 
 // Mazzetto di banconote
@@ -249,13 +305,23 @@ function roundRect(ctx, x, y, w, h, r) {
 function drawProduct(ctx, product, x, y, s) {
   ctx.save();
   ctx.translate(x, y); ctx.scale(s, s);
-  if (product === 'blue') {
-    ctx.strokeStyle = '#3c9a33'; ctx.lineWidth = 4;
-    ctx.beginPath(); ctx.moveTo(0, -22); ctx.quadraticCurveTo(4, -6, -2, 4); ctx.stroke();
-    for (const [px, py, r] of [[-9, 4, 9], [9, 2, 9], [0, 14, 9.5], [-2, -8, 7]]) {
-      ctx.fillStyle = '#3b4fb8'; ctx.beginPath(); ctx.arc(px, py, r, 0, TAU); ctx.fill();
-      ctx.fillStyle = '#8fa2ff'; ctx.beginPath(); ctx.arc(px - r * 0.35, py - r * 0.35, r * 0.25, 0, TAU); ctx.fill();
-    }
+  if (product === 'egg') {
+    ctx.fillStyle = '#fff3dc';
+    ctx.beginPath(); ctx.ellipse(0, 2, 15, 19, 0, 0, TAU); ctx.fill();
+    ctx.fillStyle = 'rgba(200,170,120,.45)';
+    ctx.beginPath(); ctx.ellipse(5, 7, 8, 11, 0, 0, TAU); ctx.fill();
+  } else if (product === 'milk') {
+    ctx.fillStyle = '#ffffff';
+    roundRect(ctx, -12, -6, 24, 30, 5); ctx.fill();
+    ctx.beginPath(); ctx.moveTo(-12, -4); ctx.lineTo(-6, -16); ctx.lineTo(6, -16); ctx.lineTo(12, -4); ctx.fill();
+    ctx.fillStyle = '#2f6fd0'; ctx.fillRect(-7, -24, 14, 8);
+    ctx.fillStyle = '#3f8ee8'; ctx.fillRect(-12, 4, 24, 9);
+  } else if (product === 'cake') {
+    ctx.fillStyle = '#f7a1c4'; ctx.fillRect(-18, -4, 36, 22);
+    ctx.fillStyle = '#fff6ee';
+    ctx.beginPath(); ctx.ellipse(0, -4, 18, 6, 0, 0, TAU); ctx.fill();
+    ctx.fillRect(-18, -4, 36, 5);
+    ctx.fillStyle = '#d8193a'; ctx.beginPath(); ctx.arc(0, -11, 5, 0, TAU); ctx.fill();
   } else if (product === 'straw') {
     ctx.fillStyle = '#e8283c';
     ctx.beginPath();
@@ -271,15 +337,7 @@ function drawProduct(ctx, product, x, y, s) {
     ctx.beginPath(); ctx.moveTo(0, 2); ctx.quadraticCurveTo(-3, 18, 2, 30); ctx.stroke();
     ctx.fillStyle = '#4fb33e';
     ctx.beginPath(); ctx.ellipse(-9, 20, 9, 4, -0.7, 0, TAU); ctx.fill();
-    if (product === 'sun') {
-      ctx.fillStyle = '#ffcc1a';
-      for (let i = 0; i < 12; i++) {
-        const a = i / 12 * TAU;
-        ctx.beginPath(); ctx.ellipse(Math.cos(a) * 11, -6 + Math.sin(a) * 11, 7, 3.4, a, 0, TAU); ctx.fill();
-      }
-      ctx.fillStyle = '#6b3a12';
-      ctx.beginPath(); ctx.arc(0, -6, 8, 0, TAU); ctx.fill();
-    } else if (product === 'rose') {
+    if (product === 'rose') {
       ctx.fillStyle = '#e8336b';
       ctx.beginPath(); ctx.arc(0, -6, 13, 0, TAU); ctx.fill();
       ctx.strokeStyle = '#a3123f'; ctx.lineWidth = 2.5;
@@ -405,7 +463,7 @@ for (let k = 0; k < AREA_PRODUCTS.length; k++) {
   const cz = czOf(k);
   path(-4, cz - 4.5, 5.6, cz + 4.6);         // piazza del negozio
   path(5.6, cz - 3.8, 20, cz - 0.6);         // fila dei clienti / ingresso
-  path(-13.5, cz - 2.5, -4, cz - 1.1);       // sentiero tra le aiuole
+  if (AREA_DEFS[k].kind === 'beds') path(-13.5, cz - 2.5, -4, cz - 1.1);  // sentiero tra le aiuole
   hedge(6.4, cz - 5.6, 4.2, 1.2, 0.8);
   hedge(8.6, cz + 4.6, 1.4, 3.6, 0.8);
   bush(4.2, cz - 7.6); bush(9.4, cz + 1.3, 0.7); bush(9.4, cz - 5.2, 0.7);
@@ -414,8 +472,8 @@ for (let k = 0; k < AREA_PRODUCTS.length; k++) {
   // Siepe destra con il varco per i clienti
   hedge(10.8, cz + 4.9, 0.8, 9.4);
   hedge(10.8, cz - 7, 0.8, 5.6);
-  for (let i = 0; i < 3; i++) bush(rand(12.5, 18), cz + rand(1.5, 9), rand(0.8, 1.3));
-  for (let i = 0; i < 3; i++) bush(rand(12.5, 18), cz + rand(-9.5, -5), rand(0.8, 1.3));
+  for (let i = 0; i < 3; i++) bush(rand(12.5, 17.3), cz + rand(1.5, 9), rand(0.8, 1.3));
+  for (let i = 0; i < 3; i++) bush(rand(12.5, 17.3), cz + rand(-9.5, -5), rand(0.8, 1.3));
   // Divisorio in alto: balaustra con cancello al centro (l'ultimo è chiuso)
   const zTop = cz - 9.8;
   if (k === AREA_PRODUCTS.length - 1) {
@@ -433,6 +491,8 @@ for (let k = 0; k < AREA_PRODUCTS.length; k++) {
   }
 }
 hedge(-2, 9.6, 25.2, 0.8);
+// Strada del furgoncino, fuori dal recinto
+path(18.9, czOf(5) - 4, 20.9, czOf(3) + 4);
 hedge(-14.6, (9.6 + TOP_Z) / 2, 0.8, 9.6 - TOP_Z);
 bush(-1.5, 7.9, 0.9);
 for (let i = 0; i < 14; i++) bush(rand(-20, 18), rand(11, 17), rand(0.8, 1.3));
@@ -785,7 +845,7 @@ function buildArea(k, instant) {
     queue: { x: -0.2, z: cz - 1.45, step: 0.95 },
     exit: [{ x: -0.2, z: cz - 2.9 }, { x: 16, z: cz - 2.9 }],
     customers: [], leaving: [], spawnTimer: 1, sellTimer: 0,
-    cashier: null, beds: [], cashBonus: 0,
+    cashier: null, beds: [], cashBonus: 0, kind: AREA_DEFS[k].kind, boost: 0,
   };
   // Bancone con cassa
   const g = new THREE.Group();
@@ -823,8 +883,12 @@ function buildArea(k, instant) {
   areas.push(A);
   if (k > 0 && gates[k - 1]) { scene.remove(gates[k - 1]); }
   BOUNDS.minZ = cz - 8.6;
-  addBed(A, 0, instant);
+  if (A.kind === 'beds') addBed(A, 0, instant);
+  else if (A.kind === 'coop') buildCoop(A, instant);
+  else if (A.kind === 'barn') buildBarn(A, instant);
+  else if (A.kind === 'bakery') buildBakery(A, instant);
   if (!instant) {
+    if (AREA_DEFS[k].tip) showTip(AREA_DEFS[k].tip, AREA_DEFS[k].tipAt(A));
     popIn(g); popIn(A.sellPad.group, 0.1); popIn(A.cashPad.group, 0.2);
     burst(0, cz, 80);
   } else {
@@ -841,7 +905,7 @@ const areaOfProduct = (product) => areas.find((a) => a.product === product);
 const plants = [];
 const REGROW = 4.5;
 const BED_COLS = 3, BED_ROWS = 4, BED_SP = 0.95;
-function addBed(A, slot, instant) {
+function addBed(A, slot, instant, product = A.product) {
   const { x, z } = bedPos(A.k, slot);
   const g = new THREE.Group();
   g.position.set(x, 0, z);
@@ -849,9 +913,10 @@ function addBed(A, slot, instant) {
   box(w, 0.2, d, 0x8a4b2c, 0, 0.1, 0, g, false);
   box(w - 0.3, 0.04, d - 0.3, 0x6e3a20, 0, 0.21, 0, g, false);
   scene.add(g);
-  const bed = { area: A, slot, x, z, product: A.product, group: g, plants: [], gardener: null, plow: null };
+  const bed = { area: A, slot, x, z, product, group: g, plants: [], gardener: null, plow: null,
+    deliver: counterDrop(A), idle: { x: x + 2.1, z: z + 0.6 }, padPos: bedPadPos(A.k, slot) };
   for (let i = 0; i < BED_COLS; i++) for (let j = 0; j < BED_ROWS; j++) {
-    const m = new THREE.Mesh(PRODUCTS[A.product].plant, VC_MAT);
+    const m = new THREE.Mesh(PRODUCTS[product].plant, VC_MAT);
     m.castShadow = true;
     const px = (i - (BED_COLS - 1) / 2) * BED_SP, pz = (j - (BED_ROWS - 1) / 2) * BED_SP;
     m.position.set(px, 0.2, pz);
@@ -877,8 +942,20 @@ function updatePlants(dt) {
     }
   }
 }
+// Dove gli aiutanti portano la merce: il bancone dello spiazzale
+const counterDrop = (A) => ({ x: A.drop.x, z: A.drop.z, fx: 0, fz: A.cz, stack: A.counter, cap: COUNTER_CAP });
 // Raccoglie una pianta: ritorna i prodotti (2 se l'aiuola ha l'aratro)
 function harvest(p, room) {
+  if (p.bed.oneShot) {
+    // Uova: si raccolgono una volta sola
+    p.grown = false;
+    scene.remove(p.mesh);
+    plants.splice(plants.indexOf(p), 1);
+    p.bed.plants.splice(p.bed.plants.indexOf(p), 1);
+    const m = makeItem(p.bed.product);
+    m.position.set(p.x, 0.3, p.z);
+    return [m];
+  }
   p.grown = false;
   p.timer = REGROW + rand(0, 1.5);
   p.mesh.visible = false;
@@ -915,6 +992,460 @@ function updatePlows(dt) {
 }
 
 // ---------------------------------------------------------------------
+//  Fattoria: pollaio, stalla e pasticceria
+// ---------------------------------------------------------------------
+const stations = [];  // dove si lascia la merce (mangiatoia, forno): { x, z, r, accepts, stack, cap }
+const outputs = [];   // pile da ritirare (latte, torte): { x, z, r, stack, cap }
+
+function makeStation(x, z, r, accepts, cap, parent, layout) {
+  const st = { x, z, r, accepts: new Set(accepts), cap, stack: new Stack(parent, layout) };
+  stations.push(st);
+  return st;
+}
+function makeOutput(x, z, cap) {
+  const pad = makePadMesh(2.4, cashTex);
+  pad.group.position.set(x, 0.03, z);
+  const out = { x, z, r: 1.4, cap, pad, stack: new Stack(pad.group, (i) => {
+    const pile = i % 4, lvl = Math.floor(i / 4);
+    return { x: (pile % 2) * 0.6 - 0.3, y: lvl * ITEM_H, z: Math.floor(pile / 2) * 0.55 - 0.27 };
+  }) };
+  outputs.push(out);
+  return out;
+}
+function groundPatch(x0, z0, x1, z1, color, parent) {
+  const m = new THREE.Mesh(new THREE.PlaneGeometry(x1 - x0, z1 - z0), new THREE.MeshLambertMaterial({ color }));
+  m.rotation.x = -Math.PI / 2;
+  m.position.set((x0 + x1) / 2, 0.015, (z0 + z1) / 2);
+  m.receiveShadow = true;
+  parent.add(m);
+}
+// Staccionata dritta lungo x o lungo z (con ostacolo per il giocatore)
+function fence(x0, z0, x1, z1, parent) {
+  const len = Math.hypot(x1 - x0, z1 - z0), n = Math.max(1, Math.round(len / 0.9));
+  for (let i = 0; i <= n; i++) {
+    box(0.12, 0.62, 0.12, 0x9c6a3c, x0 + (x1 - x0) * i / n, 0.31, z0 + (z1 - z0) * i / n, parent);
+  }
+  const alongX = Math.abs(x1 - x0) > Math.abs(z1 - z0);
+  const cx = (x0 + x1) / 2, cz = (z0 + z1) / 2;
+  for (const y of [0.28, 0.5]) {
+    box(alongX ? len : 0.06, 0.08, alongX ? 0.06 : len, 0xb57a46, cx, y, cz, parent);
+  }
+  obstacles.push({ x: cx, z: cz, hw: alongX ? len / 2 : 0.12, hd: alongX ? 0.12 : len / 2, rot: 0 });
+}
+const randomIn = (pen, m) => [rand(pen.x0 + m, pen.x1 - m), rand(pen.z0 + m, pen.z1 - m)];
+// Muove un oggetto (animale, furgone) verso (x,z) girandolo nella direzione di marcia
+function stepTo(obj, x, z, speed, dt) {
+  const p = obj.position, dx = x - p.x, dz = z - p.z, d = Math.hypot(dx, dz);
+  if (d < 0.05) return true;
+  const st = Math.min(d, speed * dt);
+  p.x += dx / d * st;
+  p.z += dz / d * st;
+  let a = Math.atan2(dx, dz) - obj.rotation.y;
+  a = Math.atan2(Math.sin(a), Math.cos(a));
+  obj.rotation.y += a * Math.min(1, dt * 8);
+  return d - st < 0.05;
+}
+function barnHouse(x, z, w, d, parent) {
+  const g = new THREE.Group();
+  g.position.set(x, 0, z);
+  box(w, 1.3, d, 0xc8452f, 0, 0.65, 0, g);
+  const roof = box(w + 0.3, 0.12, d * 0.62, 0x6b3326, 0, 1.55, d * 0.24, g);
+  roof.rotation.x = 0.55;
+  const roof2 = box(w + 0.3, 0.12, d * 0.62, 0x6b3326, 0, 1.55, -d * 0.24, g);
+  roof2.rotation.x = -0.55;
+  box(w * 0.34, 0.8, 0.05, 0xfff4e0, 0, 0.42, d / 2 + 0.01, g);
+  box(w * 0.28, 0.72, 0.06, 0x7a2e20, 0, 0.38, d / 2 + 0.02, g);
+  parent.add(g);
+  obstacles.push({ x, z, hw: w / 2, hd: d / 2, rot: 0 });
+  return g;
+}
+
+// --- Pollaio: le galline fanno le uova per terra ---
+function buildCoop(A, instant) {
+  const cz = A.cz;
+  const g = new THREE.Group();
+  scene.add(g);
+  const pen = { x0: -12.2, x1: -3.6, z0: cz - 6.4, z1: cz + 3.2 };
+  groundPatch(pen.x0, pen.z0, pen.x1, pen.z1, 0xe2cd85, g);
+  fence(pen.x0, pen.z0, pen.x0, pen.z1, g);
+  fence(pen.x0, pen.z0, pen.x1, pen.z0, g);
+  fence(pen.x0, pen.z1, pen.x1, pen.z1, g);
+  barnHouse(-10.6, cz - 5.0, 2.2, 1.8, g);
+  // Le uova sono "piante" che si raccolgono una volta sola: così le raccolgono
+  // sia il giocatore sia la contadina, con la stessa logica delle aiuole
+  const bed = { area: A, slot: -1, product: 'egg', x: -7.9, z: cz - 1.6, plants: [], gardener: null, plow: null,
+    oneShot: true, deliver: counterDrop(A), idle: { x: -4.4, z: cz + 0.4 }, padPos: { x: -1.8, z: cz + 5.4 } };
+  A.coop = { pen, bed, chickens: [], layMult: 1, group: g };
+  addChickens(A, 3, true);
+  if (!instant) popIn(g);
+}
+function addChickens(A, n, instant) {
+  const coop = A.coop;
+  for (let i = 0; i < n; i++) {
+    const m = new THREE.Mesh(CHICKEN_GEO, VC_MAT);
+    m.castShadow = true;
+    const [x, z] = randomIn(coop.pen, 0.8);
+    m.position.set(x, 0, z);
+    m.rotation.y = rand(0, TAU);
+    scene.add(m);
+    const [tx, tz] = randomIn(coop.pen, 0.6);
+    coop.chickens.push({ mesh: m, tx, tz, wait: rand(0, 2), t: rand(0, 5), lay: rand(1, 5) });
+    if (!instant) popIn(m, i * 0.1);
+  }
+  A.boost += 0.15 * n;
+  if (!instant) burst(-7.9, A.cz - 1.6, 40);
+}
+function addFeeder(A, instant) {
+  A.coop.layMult = 1.8;
+  A.boost += 0.6;
+  const g = new THREE.Group();
+  g.position.set(-7.9, 0, A.cz + 2.2);
+  box(2.2, 0.3, 0.5, 0x8a5a33, 0, 0.15, 0, g);
+  box(2.0, 0.06, 0.36, 0xf1c84b, 0, 0.31, 0, g);
+  scene.add(g);
+  if (!instant) { popIn(g); burst(-7.9, A.cz + 2.2, 40); }
+}
+function layEgg(coop, x, z) {
+  const m = new THREE.Mesh(EGG_GEO, mat(0xfff3dc));
+  m.castShadow = true;
+  m.position.set(x, 0, z);
+  m.scale.setScalar(0.001);
+  scene.add(m);
+  const p = { bed: coop.bed, mesh: m, x, z, grown: true, grow: 0, timer: 0, reservedBy: null };
+  coop.bed.plants.push(p);
+  plants.push(p);
+}
+function updateCoop(A, dt) {
+  const coop = A.coop;
+  for (const c of coop.chickens) {
+    c.t += dt;
+    if (c.wait > 0) {
+      c.wait -= dt;
+      c.mesh.position.y = 0;
+      c.mesh.rotation.x = Math.max(0, Math.sin(c.t * 6)) * 0.4; // becca per terra
+    } else {
+      c.mesh.rotation.x = 0;
+      c.mesh.position.y = Math.abs(Math.sin(c.t * 12)) * 0.05;
+      if (stepTo(c.mesh, c.tx, c.tz, 0.9, dt)) {
+        c.wait = rand(0.5, 2.5);
+        [c.tx, c.tz] = randomIn(coop.pen, 0.6);
+      }
+    }
+    c.lay -= dt * coop.layMult;
+    if (c.lay <= 0) {
+      c.lay = rand(5, 8);
+      if (coop.bed.plants.length < coop.chickens.length * 2 + 2) layEgg(coop, c.mesh.position.x, c.mesh.position.z - 0.1);
+    }
+  }
+}
+
+// --- Stalla: fieno nella mangiatoia, le mucche mangiano e fanno il latte ---
+function buildBarn(A, instant) {
+  const cz = A.cz;
+  const g = new THREE.Group();
+  scene.add(g);
+  const pen = { x0: -12.6, x1: -4.6, z0: cz - 1.4, z1: cz + 5.6 };
+  groundPatch(pen.x0, pen.z0, pen.x1, pen.z1, 0xb08a5a, g);
+  fence(pen.x0, pen.z0, pen.x0, pen.z1, g);
+  fence(pen.x0, pen.z0, pen.x1, pen.z0, g);
+  fence(pen.x0, pen.z1, pen.x1, pen.z1, g);
+  fence(pen.x1, pen.z0, pen.x1, cz + 0.7, g);
+  fence(pen.x1, cz + 3.3, pen.x1, pen.z1, g);
+  // Mangiatoia sul lato destro del recinto
+  const tg = new THREE.Group();
+  tg.position.set(pen.x1, 0, cz + 2);
+  box(0.7, 0.45, 2.6, 0x8a5a33, 0, 0.225, 0, tg);
+  box(0.56, 0.05, 2.46, 0x5e3b1f, 0, 0.44, 0, tg);
+  g.add(tg);
+  obstacles.push({ x: pen.x1, z: cz + 2, hw: 0.35, hd: 1.3, rot: 0 });
+  const trough = makeStation(pen.x1 + 1.0, cz + 2, 1.4, ['hay'], 30, tg, (i) => (
+    { x: 0, y: 0.45 + Math.floor(i / 5) * ITEM_H, z: -0.9 + (i % 5) * 0.45, ry: Math.PI / 2 }));
+  barnHouse(-11.4, cz - 8.0, 2.4, 2.0, g);
+  const milk = makeOutput(-3.0, cz + 5.0, 40);
+  A.barn = { pen, cows: [], trough, milk, conveyor: null, group: g,
+    spots: [-0.8, 0, 0.8].map((o) => ({ x: pen.x1 - 0.95, z: cz + 2 + o, cow: null })) };
+  addCows(A, 2, true);
+  // Il campo di fieno: il fattore porta il fieno alla mangiatoia invece che al bancone
+  const hay = addBed(A, 1, true, 'hay');
+  hay.deliver = { x: trough.x, z: trough.z, fx: pen.x1, fz: trough.z, stack: trough.stack, cap: trough.cap };
+  hay.idle = { x: hay.x + 2.1, z: hay.z + 0.6 };
+  if (!instant) { popIn(g); popIn(milk.pad.group, 0.2); popIn(hay.group, 0.3); }
+}
+function addCows(A, n, instant) {
+  const barn = A.barn;
+  for (let i = 0; i < n; i++) {
+    const m = new THREE.Mesh(COW_GEO, VC_MAT);
+    m.castShadow = true;
+    const [x, z] = randomIn(barn.pen, 1.2);
+    m.position.set(x, 0, z);
+    m.rotation.y = rand(0, TAU);
+    scene.add(m);
+    const [tx, tz] = randomIn(barn.pen, 1.2);
+    barn.cows.push({ mesh: m, state: 'wander', tx, tz, timer: rand(0, 2), milk: 0, spot: null, t: rand(0, 5) });
+    if (!instant) { popIn(m); burst(x, z, 30); }
+  }
+  A.boost += 0.5 * n;
+}
+function updateBarn(A, dt) {
+  const barn = A.barn;
+  for (const c of barn.cows) {
+    c.t += dt;
+    c.timer -= dt;
+    const pos = c.mesh.position;
+    if (c.state === 'wander') {
+      if (c.timer <= 0 && barn.trough.stack.count > 0) {
+        const spot = barn.spots.find((s) => !s.cow);
+        if (spot) { spot.cow = c; c.spot = spot; c.state = 'go'; }
+      }
+      if (c.state === 'wander' && stepTo(c.mesh, c.tx, c.tz, 0.6, dt)) [c.tx, c.tz] = randomIn(barn.pen, 1.2);
+    } else if (c.state === 'go') {
+      if (stepTo(c.mesh, c.spot.x, c.spot.z, 1.4, dt)) {
+        c.mesh.rotation.y = Math.PI / 2;
+        const m = barn.trough.stack.pop();
+        if (m) {
+          const mouth = new THREE.Vector3(pos.x + 0.9, 0.9, pos.z);
+          fly(m, () => mouth, 0.35, 0.3, () => { });
+          c.state = 'eat';
+          c.timer = 1.6;
+        } else {
+          c.spot.cow = null; c.spot = null; c.state = 'wander';
+        }
+      }
+    } else if (c.state === 'eat') {
+      c.mesh.rotation.x = Math.sin(c.t * 8) * 0.04;
+      if (c.timer <= 0) {
+        c.mesh.rotation.x = 0;
+        c.spot.cow = null; c.spot = null;
+        c.state = 'wander';
+        c.timer = rand(1, 2);
+        c.milk = 1.2;
+        c.bottles = 2;
+      }
+    }
+    if (c.milk > 0) {
+      c.milk -= dt;
+      if (c.milk <= 0) {
+        // Ogni pasto: due bottiglie di latte
+        if (barn.milk.stack.total < barn.milk.cap) {
+          const m = makeItem('milk');
+          m.position.set(pos.x, 0.8, pos.z);
+          fly(m, barn.milk.stack.reserve(), 0.6, 1.6, (mm) => barn.milk.stack.receive(mm));
+          sfx('pick');
+        }
+        if (--c.bottles > 0) c.milk = 0.4;
+      }
+    }
+  }
+  // Nastro trasportatore: porta il latte dal recinto al bancone
+  const cv = barn.conveyor;
+  if (cv) {
+    cv.tex.offset.y -= dt * 0.8;
+    cv.timer -= dt;
+    if (cv.timer <= 0 && barn.milk.stack.count > 0 && A.counter.total < COUNTER_CAP) {
+      cv.timer = 0.3;
+      const m = barn.milk.stack.pop();
+      fly(m, A.counter.reserve(), 1.1, 0.4, (mm) => A.counter.receive(mm));
+    }
+  }
+}
+function buildConveyor(A, instant) {
+  const p1 = { x: -2.3, z: A.cz + 4.2 }, p2 = { x: -1.8, z: A.cz + 0.75 };
+  const dx = p2.x - p1.x, dz = p2.z - p1.z, len = Math.hypot(dx, dz);
+  const tex = canvasTex(64, 64, (ctx, w, h) => {
+    ctx.fillStyle = '#3b3f48'; ctx.fillRect(0, 0, w, h);
+    ctx.fillStyle = '#5b606b'; ctx.fillRect(0, 0, w, h / 4);
+  });
+  tex.wrapS = tex.wrapT = THREE.RepeatWrapping;
+  tex.repeat.set(1, len * 3);
+  const g = new THREE.Group();
+  g.position.set((p1.x + p2.x) / 2, 0, (p1.z + p2.z) / 2);
+  g.rotation.y = Math.atan2(dx, dz);
+  box(0.62, 0.22, len, 0xb0b4bc, 0, 0.11, 0, g);
+  const belt = new THREE.Mesh(new THREE.BoxGeometry(0.5, 0.03, len), new THREE.MeshLambertMaterial({ map: tex }));
+  belt.position.y = 0.235;
+  g.add(belt);
+  scene.add(g);
+  A.barn.conveyor = { tex, timer: 0, group: g };
+  A.boost += 0.6;
+  if (!instant) { popIn(g); burst(g.position.x, g.position.z, 40); }
+}
+
+// --- Pasticceria: uova + latte nel forno = torte ---
+const puffs = [];
+function buildBakery(A, instant) {
+  const cz = A.cz;
+  const g = new THREE.Group();
+  scene.add(g);
+  path(-12.5, cz - 2.6, -4, cz + 6.2);
+  // Forno a legna
+  const oven = new THREE.Group();
+  oven.position.set(-8.4, 0, cz + 0.2);
+  box(2.4, 1.5, 1.9, 0xb5523b, 0, 0.75, 0, oven);
+  box(2.1, 0.5, 1.6, 0xa14a35, 0, 1.75, 0, oven);
+  box(0.42, 1.1, 0.42, 0x7d3a2a, -0.6, 2.4, -0.4, oven);
+  const doorMat = new THREE.MeshLambertMaterial({ color: 0x2b1b14, emissive: 0x000000 });
+  const door = new THREE.Mesh(new THREE.BoxGeometry(0.06, 0.7, 1.0), doorMat);
+  door.position.set(1.22, 0.7, 0);
+  oven.add(door);
+  g.add(oven);
+  obstacles.push({ x: -8.4, z: cz + 0.2, hw: 1.25, hd: 1.0, rot: 0 });
+  // Tavolo dove si lasciano uova e latte
+  const table = new THREE.Group();
+  table.position.set(-5.6, 0, cz + 0.2);
+  box(1.1, 0.8, 1.5, 0xc79a62, 0, 0.4, 0, table);
+  g.add(table);
+  obstacles.push({ x: -5.6, z: cz + 0.2, hw: 0.55, hd: 0.75, rot: 0 });
+  const input = makeStation(-4.4, cz + 0.2, 1.4, ['egg', 'milk'], 40, table, (i) => (
+    { x: 0, y: 0.82 + Math.floor(i / 2) * ITEM_H, z: i % 2 ? 0.36 : -0.36, ry: Math.PI / 2 }));
+  const out = makeOutput(-8.0, cz + 4.2, 40);
+  A.bakery = { oven, door: doorMat, input, out, baking: 0, bakeTime: 3, puff: 0, chef: null, van: null, group: g };
+  if (!instant) { popIn(g); popIn(out.pad.group, 0.2); }
+}
+function upgradeOven(A, instant) {
+  A.bakery.bakeTime = 1.6;
+  A.boost += 0.6;
+  // Un secondo comignolo per far vedere che il forno è più grande
+  box(0.42, 1.3, 0.42, 0x7d3a2a, 0.6, 2.5, 0.4, A.bakery.oven);
+  if (!instant) burst(-8.4, A.cz + 0.2, 50);
+}
+function updateBakery(A, dt) {
+  const b = A.bakery;
+  const hasEgg = b.input.stack.items.some((m) => m.userData.product === 'egg');
+  const hasMilk = b.input.stack.items.some((m) => m.userData.product === 'milk');
+  const doorPos = new THREE.Vector3(-7.1, 0.8, A.cz + 0.2);
+  if (b.baking > 0) {
+    b.baking -= dt;
+    b.door.emissive.setHex(0xff6a00);
+    b.door.emissiveIntensity = 0.6 + Math.sin(performance.now() / 90) * 0.3;
+    b.puff -= dt;
+    if (b.puff <= 0) {
+      b.puff = 0.35;
+      const m = new THREE.Mesh(new THREE.IcosahedronGeometry(0.18, 0),
+        new THREE.MeshLambertMaterial({ color: 0xdddddd, transparent: true, opacity: 0.8 }));
+      m.position.set(-9.0, 3.0, A.cz - 0.2);
+      scene.add(m);
+      puffs.push({ m, life: 1.6 });
+    }
+    if (b.baking <= 0) {
+      const m = makeItem('cake');
+      m.position.copy(doorPos);
+      fly(m, b.out.stack.reserve(), 0.6, 1.2, (mm) => b.out.stack.receive(mm));
+      sfx('sell');
+    }
+  } else {
+    b.door.emissive.setHex(0x000000);
+    if (hasEgg && hasMilk && b.out.stack.total < b.out.cap) {
+      for (const prod of ['egg', 'milk']) {
+        const m = b.input.stack.takeWhere((it) => it.userData.product === prod);
+        fly(m, () => doorPos, 0.35, 0.5, () => { });
+      }
+      b.baking = b.bakeTime;
+    }
+  }
+  // Pasticcere: porta le torte dal forno al bancone
+  const c = b.chef;
+  if (c) {
+    c.timer -= dt;
+    if (c.mode === 'fetch') {
+      if (moveTo(c.ch, b.out.x + 1.1, b.out.z, 3.4, dt)) {
+        if (b.out.stack.count > 0 && c.stack.total < state.gardenerCap && c.timer <= 0) {
+          c.timer = 0.1;
+          const m = b.out.stack.pop();
+          fly(m, c.stack.reserve(), 0.22, 0.5, (mm) => c.stack.receive(mm));
+        }
+        if (c.stack.total >= state.gardenerCap || (c.stack.count > 0 && b.out.stack.count === 0)) c.mode = 'deliver';
+      }
+    } else {
+      const dv = counterDrop(A);
+      if (moveTo(c.ch, dv.x, dv.z, 3.4, dt)) {
+        turnTowards(c.ch, dv.fx - dv.x, dv.fz - dv.z, dt);
+        if (c.stack.count > 0 && c.timer <= 0 && A.counter.total < COUNTER_CAP) {
+          c.timer = 0.09;
+          const m = c.stack.pop();
+          fly(m, A.counter.reserve(), 0.25, 0.7, (mm) => A.counter.receive(mm));
+        }
+        if (c.stack.total === 0) c.mode = 'fetch';
+      }
+    }
+    animateChar(c.ch, c.ch.speed || 0, dt, c.stack.total > 0);
+  }
+}
+function hireChef(A, instant) {
+  const ch = makeCharacter({ skin: pick(SKINS), shirt: 0xffffff, pants: 0x2c3e50, hair: pick(HAIRS), hat: 'cap', capColor: 0xffffff });
+  ch.group.position.set(-1.8, 0, A.cz + 5.4);
+  scene.add(ch.group);
+  const stack = new Stack(ch.group, carryLayout);
+  stack.group.position.set(0, 0.98, 0.42);
+  A.bakery.chef = { ch, stack, mode: 'fetch', timer: 0 };
+  A.boost += 0.8;
+  if (!instant) { popIn(ch.group); burst(-1.8, A.cz + 5.4, 30); }
+}
+
+// --- Furgoncino: prende uova al pollaio e latte alla stalla e li porta al forno ---
+const VAN_X = 19.9;
+function buildVan(A, instant) {
+  const m = new THREE.Mesh(VAN_GEO, VC_MAT);
+  m.castShadow = true;
+  m.position.set(VAN_X, 0, A.cz);
+  scene.add(m);
+  const load = new Stack(m, (i) => ({ x: (i % 2) * 0.4 - 0.2, y: 1.27 + Math.floor(i / 2) * ITEM_H, z: -0.3, ry: Math.PI / 2 }));
+  A.bakery.van = { mesh: m, load, stop: 0, timer: 0, idle: 0 };
+  A.boost += 0.8;
+  if (!instant) { popIn(m); burst(6.4, A.cz + 6.8, 40); }
+}
+function updateVan(A, dt) {
+  const v = A.bakery.van;
+  if (!v) return;
+  const stops = [{ k: 3, take: 'egg' }, { k: 4, take: 'milk' }, { k: 5 }];
+  const st = stops[v.stop];
+  const src = areas[st.k];
+  if (!stepTo(v.mesh, VAN_X, czOf(st.k) - 0.2, 7, dt)) { v.idle = 0; return; }
+  v.mesh.rotation.y = Math.PI;
+  v.timer -= dt;
+  if (v.timer > 0) return;
+  v.timer = 0.15;
+  if (st.take) {
+    // Carica al massimo 8 per tipo: il latte direttamente dal recinto, altrimenti dal bancone
+    const taken = v.load.items.filter((it) => it.userData.product === st.take).length;
+    const from = src.barn && src.barn.milk.stack.count > 0 ? src.barn.milk.stack : src.counter;
+    if (taken < 8 && from.count > 0) {
+      const m = from.pop();
+      fly(m, v.load.reserve(), 0.8, 3, (mm) => v.load.receive(mm));
+      v.idle = 0;
+    } else if ((v.idle += 0.15) > 4 || taken >= 8) {
+      v.stop = (v.stop + 1) % stops.length;
+      v.idle = 0;
+    }
+  } else {
+    const input = A.bakery.input;
+    if (v.load.count > 0 && input.stack.total < input.cap) {
+      const m = v.load.pop();
+      fly(m, input.stack.reserve(), 0.9, 4, (mm) => input.stack.receive(mm));
+    } else if (v.load.count === 0 || (v.idle += 0.15) > 1.2) {
+      v.stop = 0;
+      v.idle = 0;
+    }
+  }
+}
+
+function updateFarm(dt) {
+  for (const A of areas) {
+    if (A.coop) updateCoop(A, dt);
+    if (A.barn) updateBarn(A, dt);
+    if (A.bakery) { updateBakery(A, dt); updateVan(A, dt); }
+  }
+  for (let i = puffs.length - 1; i >= 0; i--) {
+    const p = puffs[i];
+    p.life -= dt;
+    p.m.position.y += dt * 1.2;
+    p.m.position.x -= dt * 0.3;
+    p.m.scale.setScalar(1 + (1.6 - p.life) * 1.2);
+    p.m.material.opacity = Math.max(0, p.life / 1.6) * 0.8;
+    if (p.life <= 0) { scene.remove(p.m); p.m.geometry.dispose(); p.m.material.dispose(); puffs.splice(i, 1); }
+  }
+}
+
+// ---------------------------------------------------------------------
 //  Giocatore
 // ---------------------------------------------------------------------
 const player = makeCharacter({
@@ -944,10 +1475,10 @@ player.group.add(maxLabel);
 //  Aiutanti: giardinieri (uno per aiuola) e cassiere (una per spiazzale)
 // ---------------------------------------------------------------------
 const gardeners = [];
-function hireGardener(bed, instant) {
-  const pad = bedPadPos(bed.area.k, bed.slot);
+function hireGardener(bed, instant, look = {}) {
+  const pad = bed.padPos;
   const ch = makeCharacter({
-    skin: pick(SKINS), shirt: 0x8bc34a, pants: 0x6b4f2a, hair: pick(HAIRS), hat: 'cap', capColor: 0x2e7d32,
+    skin: pick(SKINS), shirt: 0x8bc34a, pants: 0x6b4f2a, hair: pick(HAIRS), hat: 'cap', capColor: 0x2e7d32, ...look,
   });
   ch.group.position.set(pad.x, 0, pad.z);
   scene.add(ch.group);
@@ -971,7 +1502,7 @@ function hireCashier(A, px, pz, instant) {
 
 function updateGardeners(dt) {
   for (const gd of gardeners) {
-    const ch = gd.ch, p = ch.group.position, bed = gd.bed, A = bed.area;
+    const ch = gd.ch, p = ch.group.position, bed = gd.bed;
     gd.timer -= dt;
     if (gd.mode === 'harvest') {
       if (gd.target && (!gd.target.grown || gd.target.reservedBy !== gd)) gd.target = null;
@@ -995,17 +1526,18 @@ function updateGardeners(dt) {
         gd.mode = 'deliver';
       } else {
         // Aspetta accanto all'aiuola che i fiori ricrescano
-        if (moveTo(ch, bed.x + 2.1, bed.z + 0.6, 3, dt)) turnTowards(ch, -1, 0, dt);
+        if (moveTo(ch, bed.idle.x, bed.idle.z, 3, dt)) turnTowards(ch, -1, 0, dt);
       }
       if (gd.stack.total >= state.gardenerCap) gd.mode = 'deliver';
     } else {
       if (gd.target) { gd.target.reservedBy = null; gd.target = null; }
-      if (moveTo(ch, A.drop.x, A.drop.z, 3.4, dt)) {
-        turnTowards(ch, -A.drop.x, -A.drop.z + A.cz, dt);
-        if (gd.stack.count > 0 && gd.timer <= 0 && A.counter.total < COUNTER_CAP) {
+      const dv = bed.deliver;
+      if (moveTo(ch, dv.x, dv.z, 3.4, dt)) {
+        turnTowards(ch, dv.fx - dv.x, dv.fz - dv.z, dt);
+        if (gd.stack.count > 0 && gd.timer <= 0 && dv.stack.total < dv.cap) {
           gd.timer = 0.09;
           const m = gd.stack.pop();
-          fly(m, A.counter.reserve(), 0.25, 0.7, (mm) => A.counter.receive(mm));
+          fly(m, dv.stack.reserve(), 0.25, 0.7, (mm) => dv.stack.receive(mm));
           sfx('drop');
         }
         if (gd.stack.total === 0) gd.mode = 'harvest';
@@ -1050,7 +1582,7 @@ function spawnCustomer(A) {
   scene.add(ch.group);
   const stack = new Stack(ch.group, carryLayout);
   stack.group.position.set(0, 0.98, 0.42);
-  const maxWant = Math.min(7, 3 + Math.floor(state.stage / 4));
+  const maxWant = Math.min(PRODUCTS[A.product].maxWant || 7, 3 + Math.floor(state.stage / 4));
   const want = randInt(1, maxWant);
   const c = document.createElement('canvas');
   c.width = 160; c.height = 120;
@@ -1083,6 +1615,9 @@ function spawnInterval(A) {
     if (bed.plow) boost += 0.9;
   }
   if (A.cashier) boost += 0.4;
+  boost += A.boost;
+  // Nella fattoria i clienti crescono più piano: una parte della merce serve alla pasticceria
+  if (A.kind === 'coop' || A.kind === 'barn') return Math.max(1.0, 3.4 / (1 + (boost - 1) * 0.5));
   return Math.max(0.45, 3.4 / boost);
 }
 
@@ -1172,11 +1707,14 @@ const U = {
     apply: (i) => hireGardener(areas[k].beds[s], i) }),
   plow: (k, s, cost) => ({ name: 'Aratro', desc: 'raccolto doppio!', cost, ...bedPadPos(k, s),
     apply: (i) => buildPlow(areas[k].beds[s], i) }),
-  cashier: (k, cost) => ({ name: 'Cassiera', desc: 'vende al posto tuo', cost, x: -3.4, z: czOf(k) + 4.4,
-    apply: (i) => hireCashier(areas[k], -3.4, czOf(k) + 4.4, i) }),
-  area: (k, cost) => ({ name: 'Nuovo spiazzale', desc: PRODUCTS[AREA_PRODUCTS[k]].name, icon: AREA_PRODUCTS[k], cost,
+  cashier: (k, cost, x = -3.4, dz = 4.4) => ({ name: 'Cassiera', desc: 'vende al posto tuo', cost, x, z: czOf(k) + dz,
+    apply: (i) => hireCashier(areas[k], x, czOf(k) + dz, i) }),
+  area: (k, cost) => ({ name: 'Nuovo spiazzale', desc: AREA_DEFS[k].title || PRODUCTS[AREA_PRODUCTS[k]].name, icon: AREA_PRODUCTS[k], cost,
     x: 0, z: czOf(k - 1) - 7.4, apply: (i) => buildArea(k, i) }),
-  shop: (k, name, desc, cost, fn) => ({ name, desc, cost, ...shopPos(k), apply: fn }),
+  shop: (k, name, desc, cost, fn, pos = shopPos(k)) => ({ name, desc, cost, ...pos, apply: fn }),
+  // Sblocco speciale in un punto preciso dello spiazzale k
+  at: (k, x, dz, name, desc, cost, fn, icon) => ({ name, desc, icon, cost, x, z: czOf(k) + dz,
+    apply: (i) => fn(areas[k], i) }),
 };
 const UPGRADES = [
   // Spiazzale 1: rose
@@ -1208,20 +1746,35 @@ const UPGRADES = [
   U.plow(2, 1, 4300),
   U.shop(2, 'Braccia forti', '+10 in braccio', 5000, () => { state.capacity += 10; }),
   { name: 'Fontana', desc: 'il giardino più bello!', cost: 6000, x: 4.6, z: 5.6, apply: (i) => buildFountain(4.6, 5.6, i) },
-  // Dal quarto spiazzale in poi: stessa sequenza, prezzi più alti
-  ...areaUpgrades(3, 8000, ['Scarpe veloci', 'corri più veloce', () => { state.speed *= 1.15; }]),
-  ...areaUpgrades(4, 26000, ['Braccia forti', '+10 in braccio', () => { state.capacity += 10; }]),
-  ...areaUpgrades(5, 72000, ['Cesti grandi', 'aiutanti +4', () => { state.gardenerCap += 4; }]),
+  // Spiazzale 4: pollaio
+  U.area(3, 8000),
+  U.at(3, -7.5, 5.2, 'Altre galline', '+3 galline', 9500, (A, i) => addChickens(A, 3, i), 'egg'),
+  U.cashier(3, 11000, 2, 5.4),
+  U.at(3, -1.8, 5.4, 'Contadina', 'raccoglie le uova', 13000, (A, i) => hireGardener(A.coop.bed, i,
+    { shirt: 0xf5a623, pants: 0x4a5a7a, hat: null, hairStyle: 'long' })),
+  U.at(3, -7.5, 5.2, 'Mangime', 'più uova!', 15500, (A, i) => addFeeder(A, i)),
+  U.at(3, -7.5, 5.2, 'Altre galline', '+3 galline', 18000, (A, i) => addChickens(A, 3, i), 'egg'),
+  U.shop(3, 'Scarpe veloci', 'corri più veloce', 21000, () => { state.speed *= 1.15; }),
+  // Spiazzale 5: stalla
+  U.area(4, 26000),
+  U.at(4, -8.5, 7.4, 'Mucca', '+1 mucca', 30000, (A, i) => addCows(A, 1, i), 'milk'),
+  U.cashier(4, 34000, 2, 5.4),
+  U.at(4, -8.7, -4.9, 'Fattore', 'porta il fieno', 39000, (A, i) => hireGardener(A.beds[1], i,
+    { shirt: 0xc0392b, pants: 0x2c3e50, hat: 'straw' })),
+  U.at(4, 1.4, 6.2, 'Nastro', 'latte al bancone', 45000, (A, i) => buildConveyor(A, i)),
+  U.at(4, -8.5, 7.4, 'Mucca', '+1 mucca', 52000, (A, i) => addCows(A, 1, i), 'milk'),
+  U.at(4, -8.7, -4.9, 'Trattore', 'fieno doppio', 60000, (A, i) => buildPlow(A.beds[1], i)),
+  U.shop(4, 'Braccia forti', '+10 in braccio', 68000, () => { state.capacity += 10; }, { x: -8.5, z: czOf(4) + 7.4 }),
+  // Spiazzale 6: pasticceria
+  U.area(5, 80000),
+  U.cashier(5, 92000, 2, 5.4),
+  U.at(5, -1.8, 5.4, 'Pasticcere', 'porta le torte', 105000, (A, i) => hireChef(A, i)),
+  U.at(5, -11.2, 4.2, 'Forno veloce', 'torte più veloci', 120000, (A, i) => upgradeOven(A, i), 'cake'),
+  U.at(5, 6.4, 6.8, 'Furgoncino', 'porta uova e latte', 140000, (A, i) => buildVan(A, i)),
+  U.shop(5, 'Cesti grandi', 'aiutanti +4', 160000, () => { state.gardenerCap += 4; }),
   // Finale: si ricomincia con una stella in più
   { name: 'Nuovo giardino', desc: 'guadagni +50%', star: true, cost: 250000, ...shopPos(5), apply: () => completeGarden() },
 ];
-function areaUpgrades(k, base, [shopName, shopDesc, shopFn]) {
-  const c = (f) => Math.round(base * f / 100) * 100;
-  return [
-    U.area(k, c(1)), U.bed(k, 1, c(1.18)), U.cashier(k, c(1.36)), U.gardener(k, 0, c(1.6)),
-    U.plow(k, 0, c(1.85)), U.shop(k, shopName, shopDesc, c(2.1), shopFn), U.gardener(k, 1, c(2.35)), U.plow(k, 1, c(2.7)),
-  ];
-}
 const getUpgrade = (i) => UPGRADES[i] || null;
 
 let fountain = null;
@@ -1376,6 +1929,8 @@ function setHint(text) {
   hintEl.classList.toggle('show', !!text);
 }
 const arrowPos = new THREE.Vector3();
+let tip = null;
+function showTip(text, at, seconds = 8) { tip = { text, at, t: seconds }; }
 function nearestTo(pp, list) {
   let best = null, bd = Infinity;
   for (const it of list) {
@@ -1392,7 +1947,10 @@ function updateGuide(t) {
   const tutorial = state.stage < 4;
   const top = playerStack.items[playerStack.count - 1];
   const sellArea = top && areaOfProduct(top.userData.product);
-  if (pad && state.money >= padLeft) {
+  if (tip && tip.start === undefined) tip.start = t;
+  if (tip && t - tip.start < tip.t) {
+    target = tip.at; hint = tip.text;
+  } else if (pad && state.money >= padLeft) {
     target = pad.up; hint = 'Sblocca: ' + pad.up.name + '!';
   } else if (tutorial && areas[0].cashStack.count > 0) {
     target = areas[0].cash; hint = 'Raccogli i soldi!';
@@ -1532,6 +2090,26 @@ function updatePlayer(dt) {
   }
   depositTimer -= dt;
   collectTimer -= dt;
+  // Mangiatoia e forno
+  for (const st of stations) {
+    if (depositTimer <= 0 && st.stack.total < st.cap && distXZ(p, st.x, st.z) < st.r) {
+      const m = playerStack.takeWhere((it) => st.accepts.has(it.userData.product));
+      if (m) {
+        depositTimer = 0.07;
+        fly(m, st.stack.reserve(), 0.25, 0.6, (mm) => st.stack.receive(mm));
+        sfx('drop');
+      }
+    }
+  }
+  // Latte e torte pronte da ritirare
+  for (const out of outputs) {
+    if (harvestTimer <= 0 && out.stack.count > 0 && state.capacity > playerStack.total && distXZ(p, out.x, out.z) < out.r) {
+      harvestTimer = 0.06;
+      const m = out.stack.pop();
+      fly(m, playerStack.reserve(), 0.22, 0.6, (mm) => playerStack.receive(mm));
+      sfx('pick');
+    }
+  }
   for (const A of areas) {
     // Consegna al bancone (solo i prodotti di questo spiazzale)
     if (depositTimer <= 0 && A.counter.total < COUNTER_CAP && distXZ(p, A.sell.x, A.sell.z) < A.sell.r + 0.3) {
@@ -1660,6 +2238,7 @@ function frame() {
     updatePlants(dt);
     updatePlows(dt);
     updateGardeners(dt);
+    updateFarm(dt);
     for (const A of areas) { updateCustomers(A, dt); updateSelling(A, dt); }
     updatePad(dt);
     updateGuide(elapsed);
@@ -1680,5 +2259,5 @@ frame();
 
 // Utile per i test automatici
 window.__game = {
-  debug, state, player, plants, areas, playerStack, get pad() { return currentPad; },
+  debug, state, player, plants, areas, playerStack, stations, outputs, get pad() { return currentPad; },
 };
