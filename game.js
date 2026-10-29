@@ -1382,48 +1382,74 @@ function hireChef(A, instant) {
 }
 
 // --- Furgoncino: prende uova al pollaio e latte alla stalla e li porta al forno ---
+// Parcheggia in pasticceria vicino al forno, esce dall'ingresso dei clienti e
+// fa il giro sulla strada fuori dal recinto.
 const VAN_X = 19.9;
+const vanLane = (k) => czOf(k) - 3.6;   // corsia libera sopra la fila dei clienti
+const VAN_STOPS = [{ k: 3, take: 'egg' }, { k: 4, take: 'milk' }, { k: 5 }];
+function vanRoute(stop) {
+  const out = [{ x: 9, z: vanLane(5) }, { x: VAN_X, z: vanLane(5) }];
+  if (stop === 0) return [...out, { x: VAN_X, z: vanLane(3) }];
+  if (stop === 1) return [{ x: VAN_X, z: vanLane(4) }];
+  return [{ x: VAN_X, z: vanLane(5) }, { x: 9, z: vanLane(5) }, { x: -5.4, z: vanLane(5) }];
+}
 function buildVan(A, instant) {
   const m = new THREE.Mesh(VAN_GEO, VC_MAT);
   m.castShadow = true;
-  m.position.set(VAN_X, 0, A.cz);
+  m.position.set(-5.4, 0, vanLane(5));
+  m.rotation.y = Math.PI / 2;
   scene.add(m);
   const load = new Stack(m, (i) => ({ x: (i % 2) * 0.4 - 0.2, y: 1.27 + Math.floor(i / 2) * ITEM_H, z: -0.3, ry: Math.PI / 2 }));
-  A.bakery.van = { mesh: m, load, stop: 0, timer: 0, idle: 0 };
+  // Parte dal parcheggio (fermata 2, già scarico) e va subito al pollaio
+  A.bakery.van = { mesh: m, load, stop: 2, path: [], timer: 3, idle: 0, taken: {} };
   A.boost += 0.8;
-  if (!instant) { popIn(m); burst(6.4, A.cz + 6.8, 40); }
+  if (!instant) {
+    popIn(m);
+    burst(m.position.x, m.position.z, 50);
+    showTip('Arriva il furgoncino!', m.position, 5);
+  }
 }
 function updateVan(A, dt) {
   const v = A.bakery.van;
   if (!v) return;
-  const stops = [{ k: 3, take: 'egg' }, { k: 4, take: 'milk' }, { k: 5 }];
-  const st = stops[v.stop];
+  if (v.path.length) {
+    const w = v.path[0];
+    if (stepTo(v.mesh, w.x, w.z, 9, dt)) v.path.shift();
+    return;
+  }
+  const st = VAN_STOPS[v.stop];
   const src = areas[st.k];
-  if (!stepTo(v.mesh, VAN_X, czOf(st.k) - 0.2, 7, dt)) { v.idle = 0; return; }
-  v.mesh.rotation.y = Math.PI;
+  const next = () => { v.stop = (v.stop + 1) % VAN_STOPS.length; v.path = vanRoute(v.stop); v.idle = 0; v.taken = {}; };
   v.timer -= dt;
   if (v.timer > 0) return;
   v.timer = 0.15;
   if (st.take) {
-    // Carica al massimo 8 per tipo: il latte direttamente dal recinto, altrimenti dal bancone
-    const taken = v.load.items.filter((it) => it.userData.product === st.take).length;
-    const from = src.barn && src.barn.milk.stack.count > 0 ? src.barn.milk.stack : src.counter;
-    if (taken < 8 && from.count > 0) {
-      const m = from.pop();
+    // Carica al massimo 8 per tipo (contando anche quelli ancora in volo)
+    const taken = v.taken[st.take] || 0;
+    let m = null;
+    if (taken < 8) {
+      if (src.barn && src.barn.milk.stack.count > 0) m = src.barn.milk.stack.pop();      // latte dal recinto
+      else if (src.counter.count > 0) m = src.counter.pop();                              // dal bancone
+      else if (src.coop) {                                                                // uova per terra
+        const egg = src.coop.bed.plants.find((p) => p.grown && p.grow >= 1);
+        if (egg) m = harvest(egg, 1)[0];
+      }
+    }
+    if (m) {
       fly(m, v.load.reserve(), 0.8, 3, (mm) => v.load.receive(mm));
+      v.taken[st.take] = taken + 1;
       v.idle = 0;
-    } else if ((v.idle += 0.15) > 4 || taken >= 8) {
-      v.stop = (v.stop + 1) % stops.length;
-      v.idle = 0;
+    } else if ((v.idle += 0.15) > 3 || taken >= 8) {
+      next();
     }
   } else {
     const input = A.bakery.input;
     if (v.load.count > 0 && input.stack.total < input.cap) {
       const m = v.load.pop();
-      fly(m, input.stack.reserve(), 0.9, 4, (mm) => input.stack.receive(mm));
+      fly(m, input.stack.reserve(), 0.6, 2, (mm) => input.stack.receive(mm));
+      sfx('drop');
     } else if (v.load.count === 0 || (v.idle += 0.15) > 1.2) {
-      v.stop = 0;
-      v.idle = 0;
+      next();
     }
   }
 }
@@ -1770,7 +1796,7 @@ const UPGRADES = [
   U.cashier(5, 92000, 2, 5.4),
   U.at(5, -1.8, 5.4, 'Pasticcere', 'porta le torte', 105000, (A, i) => hireChef(A, i)),
   U.at(5, -11.2, 4.2, 'Forno veloce', 'torte più veloci', 120000, (A, i) => upgradeOven(A, i), 'cake'),
-  U.at(5, 6.4, 6.8, 'Furgoncino', 'porta uova e latte', 140000, (A, i) => buildVan(A, i)),
+  U.at(5, -5.4, -3.6, 'Furgoncino', 'porta uova e latte', 140000, (A, i) => buildVan(A, i)),
   U.shop(5, 'Cesti grandi', 'aiutanti +4', 160000, () => { state.gardenerCap += 4; }),
   // Finale: si ricomincia con una stella in più
   { name: 'Nuovo giardino', desc: 'guadagni +50%', star: true, cost: 250000, ...shopPos(5), apply: () => completeGarden() },
