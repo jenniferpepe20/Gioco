@@ -997,10 +997,22 @@ function updatePlows(dt) {
 const stations = [];  // dove si lascia la merce (mangiatoia, forno): { x, z, r, accepts, stack, cap }
 const outputs = [];   // pile da ritirare (latte, torte): { x, z, r, stack, cap }
 
-function makeStation(x, z, r, accepts, cap, parent, layout) {
-  const st = { x, z, r, accepts: new Set(accepts), cap, stack: new Stack(parent, layout) };
+// perCap: posti riservati per ogni prodotto (il forno vuole uova E latte: se si riempisse
+// di un solo ingrediente resterebbe bloccato)
+function makeStation(x, z, r, accepts, cap, parent, layout, perCap = 0) {
+  const st = { x, z, r, accepts: new Set(accepts), cap, perCap, pending: {}, stack: new Stack(parent, layout) };
   stations.push(st);
   return st;
+}
+const countOf = (stack, prod) => stack.items.reduce((n, it) => n + (it.userData.product === prod), 0);
+function stationRoom(st, prod) {
+  if (!st.accepts.has(prod) || st.stack.total >= st.cap) return false;
+  return !st.perCap || countOf(st.stack, prod) + (st.pending[prod] || 0) < st.perCap;
+}
+function sendToStation(st, m, dur, arc) {
+  const prod = m.userData.product;
+  st.pending[prod] = (st.pending[prod] || 0) + 1;
+  fly(m, st.stack.reserve(), dur, arc, (mm) => { st.pending[prod]--; st.stack.receive(mm); });
 }
 function makeOutput(x, z, cap) {
   const pad = makePadMesh(2.4, cashTex);
@@ -1295,8 +1307,8 @@ function buildBakery(A, instant) {
   box(1.1, 0.8, 1.5, 0xc79a62, 0, 0.4, 0, table);
   g.add(table);
   obstacles.push({ x: -5.6, z: cz + 0.2, hw: 0.55, hd: 0.75, rot: 0 });
-  const input = makeStation(-4.4, cz + 0.2, 1.4, ['egg', 'milk'], 40, table, (i) => (
-    { x: 0, y: 0.82 + Math.floor(i / 2) * ITEM_H, z: i % 2 ? 0.36 : -0.36, ry: Math.PI / 2 }));
+  const input = makeStation(-4.4, cz + 0.2, 1.4, ['egg', 'milk'], 32, table, (i) => (
+    { x: 0, y: 0.82 + Math.floor(i / 2) * ITEM_H, z: i % 2 ? 0.36 : -0.36, ry: Math.PI / 2 }), 16);
   const out = makeOutput(-8.0, cz + 4.2, 40);
   A.bakery = { oven, door: doorMat, input, out, baking: 0, bakeTime: 3, puff: 0, chef: null, van: null, group: g };
   if (!instant) { popIn(g); popIn(out.pad.group, 0.2); }
@@ -1440,13 +1452,13 @@ function updateVan(A, dt) {
   }
   const st = VAN_STOPS[v.stop];
   const src = areas[st.k];
-  const next = () => { v.stop = (v.stop + 1) % VAN_STOPS.length; v.path = vanRoute(v.stop); v.idle = 0; v.taken = {}; };
+  const next = () => { v.stop = (v.stop + 1) % VAN_STOPS.length; v.path = vanRoute(v.stop); v.idle = 0; };
   v.timer -= dt;
   if (v.timer > 0) return;
   v.timer = 0.15;
   if (st.take) {
-    // Carica al massimo 8 per tipo (contando anche quelli ancora in volo)
-    const taken = v.taken[st.take] || 0;
+    // A bordo al massimo 8 per tipo (contando quelli già caricati e quelli in volo)
+    const taken = countOf(v.load, st.take) + (v.taken[st.take] || 0);
     let m = null;
     if (taken < 8) {
       if (src.barn && src.barn.milk.stack.count > 0) m = src.barn.milk.stack.pop();      // latte dal recinto
@@ -1457,23 +1469,22 @@ function updateVan(A, dt) {
       }
     }
     if (m) {
-      fly(m, v.load.reserve(), 0.8, 3, (mm) => v.load.receive(mm));
-      v.taken[st.take] = taken + 1;
+      const prod = st.take;
+      v.taken[prod] = (v.taken[prod] || 0) + 1;
+      fly(m, v.load.reserve(), 0.8, 3, (mm) => { v.taken[prod]--; v.load.receive(mm); });
       v.idle = 0;
     } else if ((v.idle += 0.15) > 3 || taken >= 8) {
       next();
     }
   } else {
     const input = A.bakery.input;
-    if (v.load.count > 0 && input.stack.total < input.cap) {
-      const m = v.load.pop();
-      fly(m, input.stack.reserve(), 0.6, 2, (mm) => input.stack.receive(mm));
+    // Scarica solo quello che ci sta sul tavolo
+    const m = v.load.takeWhere((it) => stationRoom(input, it.userData.product));
+    if (m) {
+      sendToStation(input, m, 0.6, 2);
       sfx('drop');
-    } else if (v.load.count === 0) {
+    } else if (countOf(input.stack, 'egg') < 3 || countOf(input.stack, 'milk') < 3) {
       // Resta parcheggiato finché sul tavolo ci sono abbastanza uova e latte
-      const n = (prod) => input.stack.items.filter((it) => it.userData.product === prod).length;
-      if (n('egg') < 3 || n('milk') < 3) next();
-    } else if ((v.idle += 0.15) > 1.2) {
       next();
     }
   }
@@ -2143,11 +2154,11 @@ function updatePlayer(dt) {
   collectTimer -= dt;
   // Mangiatoia e forno
   for (const st of stations) {
-    if (depositTimer <= 0 && st.stack.total < st.cap && distXZ(p, st.x, st.z) < st.r) {
-      const m = playerStack.takeWhere((it) => st.accepts.has(it.userData.product));
+    if (depositTimer <= 0 && distXZ(p, st.x, st.z) < st.r) {
+      const m = playerStack.takeWhere((it) => stationRoom(st, it.userData.product));
       if (m) {
         depositTimer = 0.07;
-        fly(m, st.stack.reserve(), 0.25, 0.6, (mm) => st.stack.receive(mm));
+        sendToStation(st, m, 0.25, 0.6);
         sfx('drop');
       }
     }
