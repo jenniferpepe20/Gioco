@@ -1401,7 +1401,27 @@ function buildVan(A, instant) {
   scene.add(m);
   const load = new Stack(m, (i) => ({ x: (i % 2) * 0.4 - 0.2, y: 1.27 + Math.floor(i / 2) * ITEM_H, z: -0.3, ry: Math.PI / 2 }));
   // Parte dal parcheggio (fermata 2, già scarico) e va subito al pollaio
-  A.bakery.van = { mesh: m, load, stop: 2, path: [], timer: 3, idle: 0, taken: {} };
+  // Cartello sul parcheggio quando il furgoncino è in giro
+  const sign = new THREE.Sprite(new THREE.SpriteMaterial({
+    map: canvasTex(300, 96, (ctx, w, h) => {
+      ctx.fillStyle = '#262b36';
+      roundRect(ctx, 4, 4, w - 8, h - 8, 22); ctx.fill();
+      // furgoncino stilizzato
+      ctx.fillStyle = '#ffffff'; ctx.fillRect(18, 30, 50, 30);
+      ctx.fillStyle = '#2f7fd0'; ctx.fillRect(68, 38, 20, 22);
+      ctx.fillStyle = '#ff6fa0'; ctx.fillRect(18, 48, 50, 5);
+      ctx.fillStyle = '#111'; ctx.beginPath(); ctx.arc(32, 62, 7, 0, TAU); ctx.arc(76, 62, 7, 0, TAU); ctx.fill();
+      ctx.font = '900 30px "Trebuchet MS", Arial, sans-serif';
+      ctx.fillStyle = '#ffffff'; ctx.textBaseline = 'middle';
+      ctx.fillText('IN VIAGGIO', 100, h / 2 + 2);
+    }), depthTest: false,
+  }));
+  sign.scale.set(2.8, 0.9, 1);
+  sign.position.set(-5.4, 1.6, vanLane(5));
+  sign.renderOrder = 12;
+  sign.visible = false;
+  scene.add(sign);
+  A.bakery.van = { mesh: m, load, stop: 2, path: [], timer: 3, idle: 0, taken: {}, sign };
   A.boost += 0.8;
   if (!instant) {
     popIn(m);
@@ -1412,6 +1432,7 @@ function buildVan(A, instant) {
 function updateVan(A, dt) {
   const v = A.bakery.van;
   if (!v) return;
+  v.sign.visible = distXZ(v.mesh.position, -5.4, vanLane(5)) > 1.5;
   if (v.path.length) {
     const w = v.path[0];
     if (stepTo(v.mesh, w.x, w.z, 9, dt)) v.path.shift();
@@ -1448,7 +1469,11 @@ function updateVan(A, dt) {
       const m = v.load.pop();
       fly(m, input.stack.reserve(), 0.6, 2, (mm) => input.stack.receive(mm));
       sfx('drop');
-    } else if (v.load.count === 0 || (v.idle += 0.15) > 1.2) {
+    } else if (v.load.count === 0) {
+      // Resta parcheggiato finché sul tavolo ci sono abbastanza uova e latte
+      const n = (prod) => input.stack.items.filter((it) => it.userData.product === prod).length;
+      if (n('egg') < 3 || n('milk') < 3) next();
+    } else if ((v.idle += 0.15) > 1.2) {
       next();
     }
   }

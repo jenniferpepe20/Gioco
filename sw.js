@@ -1,6 +1,6 @@
 // Service worker: rende il gioco installabile e giocabile offline.
 // Cambia VERSION quando aggiorni i file per forzare il nuovo download.
-const VERSION = 'flower-tycoon-v4.1';
+const VERSION = 'flower-tycoon-v4.2';
 const FILES = [
   './', './index.html', './style.css', './game.js', './manifest.json',
   './vendor/three.module.min.js', './icons/icon-192.png', './icons/icon-512.png',
