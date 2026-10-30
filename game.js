@@ -763,19 +763,26 @@ function initAudio() {
 //  Stato di gioco e salvataggio
 // ---------------------------------------------------------------------
 const state = {
-  money: 0, stage: 0, stars: 0, legacyBonus: 0,
+  money: 0, stars: 0, legacyBonus: 0, tracks: {}, levels: {}, paid: {},
   capacity: 10, priceBonus: 0, speed: 5.2, gardenerCap: 6,
 };
 // Ogni stella (giardino completato) fa guadagnare il 50% in più
-const priceOf = (product) => Math.round((PRODUCTS[product].price + state.priceBonus) * (1 + 0.5 * state.stars));
+// Prezzo di vendita: base + bonus + livelli "Migliora" dello spiazzale, e +50% per ogni stella
+const LEVEL_INC = [1, 1, 2, 3, 4, 10];
+function priceOf(product) {
+  const k = AREA_PRODUCTS.indexOf(product);
+  const lv = k >= 0 ? (state.levels[k] || 0) * LEVEL_INC[k] : 0;
+  return Math.round((PRODUCTS[product].price + state.priceBonus + lv) * (1 + 0.5 * state.stars));
+}
+const totalBought = () => Object.values(state.tracks).reduce((a, b) => a + b, 0);
 let loaded = null;
 try { loaded = JSON.parse(localStorage.getItem(SAVE_KEY)); } catch { }
 
 function save() {
   try {
     localStorage.setItem(SAVE_KEY, JSON.stringify({
-      money: state.money, stage: state.stage, padPaid: currentPad ? currentPad.paid : 0,
-      stars: state.stars, legacyBonus: state.legacyBonus,
+      v: 5, money: state.money, stars: state.stars, legacyBonus: state.legacyBonus,
+      tracks: state.tracks, levels: state.levels, paid: state.paid,
     }));
   } catch { }
 }
@@ -1644,7 +1651,7 @@ function spawnCustomer(A) {
   scene.add(ch.group);
   const stack = new Stack(ch.group, carryLayout);
   stack.group.position.set(0, 0.98, 0.42);
-  const maxWant = Math.min(PRODUCTS[A.product].maxWant || 7, 3 + Math.floor(state.stage / 4));
+  const maxWant = Math.min(PRODUCTS[A.product].maxWant || 7, 3 + Math.floor(totalBought() / 4));
   const want = randInt(1, maxWant);
   const c = document.createElement('canvas');
   c.width = 160; c.height = 120;
@@ -1761,83 +1768,119 @@ function updateSelling(A, dt) {
 // ---------------------------------------------------------------------
 //  Sblocchi (pedane da pagare)
 // ---------------------------------------------------------------------
-const shopPos = (k) => ({ x: -1.8, z: czOf(k) + 5.4 });
+// Ogni sblocco appartiene a una "pista": una per spiazzale (a0..a5), una per aprire
+// nuovi spiazzali, una per i potenziamenti del giocatore e il finale. Di ogni pista
+// si vede la pedana successiva, quindi ci sono più pedane insieme e scegli tu.
+const SHOP_POS = { x: -0.6, z: 6.9 };
 const U = {
-  bed: (k, s, cost) => ({ name: 'Nuova aiuola', desc: PRODUCTS[AREA_PRODUCTS[k]].name, icon: AREA_PRODUCTS[k], cost,
+  bed: (k, s, cost) => ({ track: 'a' + k, name: 'Nuova aiuola', desc: PRODUCTS[AREA_PRODUCTS[k]].name, icon: AREA_PRODUCTS[k], cost,
     ...bedPos(k, s), apply: (i) => addBed(areas[k], s, i) }),
-  gardener: (k, s, cost) => ({ name: 'Giardiniere', desc: 'per questa aiuola', cost, ...bedPadPos(k, s),
+  gardener: (k, s, cost) => ({ track: 'a' + k, name: 'Giardiniere', desc: 'per questa aiuola', cost, ...bedPadPos(k, s),
     apply: (i) => hireGardener(areas[k].beds[s], i) }),
-  plow: (k, s, cost) => ({ name: 'Aratro', desc: 'raccolto doppio!', cost, ...bedPadPos(k, s),
+  plow: (k, s, cost) => ({ track: 'a' + k, name: 'Aratro', desc: 'raccolto doppio!', cost, ...bedPadPos(k, s),
     apply: (i) => buildPlow(areas[k].beds[s], i) }),
-  cashier: (k, cost, x = -3.4, dz = 4.4) => ({ name: 'Cassiera', desc: 'vende al posto tuo', cost, x, z: czOf(k) + dz,
+  cashier: (k, cost, x = -3.4, dz = 4.4) => ({ track: 'a' + k, name: 'Cassiera', desc: 'vende al posto tuo', cost, x, z: czOf(k) + dz,
     apply: (i) => hireCashier(areas[k], x, czOf(k) + dz, i) }),
-  area: (k, cost) => ({ name: 'Nuovo spiazzale', desc: AREA_DEFS[k].title || PRODUCTS[AREA_PRODUCTS[k]].name, icon: AREA_PRODUCTS[k], cost,
+  area: (k, cost) => ({ track: 'area', name: 'Nuovo spiazzale', desc: AREA_DEFS[k].title || PRODUCTS[AREA_PRODUCTS[k]].name, icon: AREA_PRODUCTS[k], cost,
     x: 0, z: czOf(k - 1) - 7.4, apply: (i) => buildArea(k, i) }),
-  shop: (k, name, desc, cost, fn, pos = shopPos(k)) => ({ name, desc, cost, ...pos, apply: fn }),
+  shop: (name, desc, cost, fn) => ({ track: 'shop', name, desc, cost, ...SHOP_POS, apply: fn }),
   // Sblocco speciale in un punto preciso dello spiazzale k
-  at: (k, x, dz, name, desc, cost, fn, icon) => ({ name, desc, icon, cost, x, z: czOf(k) + dz,
+  at: (k, x, dz, name, desc, cost, fn, icon) => ({ track: 'a' + k, name, desc, icon, cost, x, z: czOf(k) + dz,
     apply: (i) => fn(areas[k], i) }),
 };
+// L'ordine della lista conta solo per ricaricare i salvataggi (vecchi e nuovi)
 const UPGRADES = [
   // Spiazzale 1: rose
-  U.bed(0, 1, 20),
-  U.cashier(0, 40),
-  U.gardener(0, 0, 70),
-  U.shop(0, 'Braccia forti', '+10 in braccio', 100, () => { state.capacity += 10; }),
-  U.plow(0, 0, 140),
-  U.gardener(0, 1, 190),
-  U.plow(0, 1, 250),
+  U.bed(0, 1, 15),
+  U.cashier(0, 30),
+  U.gardener(0, 0, 50),
+  U.shop('Braccia forti', '+10 in braccio', 80, () => { state.capacity += 10; }),
+  U.plow(0, 0, 90),
+  U.gardener(0, 1, 130),
+  U.plow(0, 1, 180),
   // Spiazzale 2: margherite
-  U.area(1, 350),
-  U.bed(1, 1, 420),
-  U.cashier(1, 500),
-  U.gardener(1, 0, 600),
-  U.shop(1, 'Scarpe veloci', 'corri più veloce', 700, () => { state.speed *= 1.25; }),
-  U.plow(1, 0, 800),
-  U.gardener(1, 1, 950),
-  U.plow(1, 1, 1100),
-  U.shop(1, 'Carta regalo', 'tutto costa +$1', 1300, () => { state.priceBonus += 1; }),
+  U.area(1, 250),
+  U.bed(1, 1, 200),
+  U.cashier(1, 260),
+  U.gardener(1, 0, 330),
+  U.shop('Scarpe veloci', 'corri più veloce', 250, () => { state.speed *= 1.25; }),
+  U.plow(1, 0, 420),
+  U.gardener(1, 1, 520),
+  U.plow(1, 1, 650),
+  U.shop('Carta regalo', 'tutto costa +$1', 500, () => { state.priceBonus += 1; }),
   // Spiazzale 3: fragole
-  U.area(2, 1600),
-  U.bed(2, 1, 1900),
-  U.cashier(2, 2200),
-  U.gardener(2, 0, 2600),
-  U.plow(2, 0, 3000),
-  U.shop(2, 'Cesti grandi', 'aiutanti +4', 3400, () => { state.gardenerCap += 4; }),
-  U.gardener(2, 1, 3800),
-  U.plow(2, 1, 4300),
-  U.shop(2, 'Braccia forti', '+10 in braccio', 5000, () => { state.capacity += 10; }),
-  { name: 'Fontana', desc: 'il giardino più bello!', cost: 6000, x: 4.6, z: 5.6, apply: (i) => buildFountain(4.6, 5.6, i) },
+  U.area(2, 900),
+  U.bed(2, 1, 700),
+  U.cashier(2, 850),
+  U.gardener(2, 0, 1000),
+  U.plow(2, 0, 1200),
+  U.shop('Cesti grandi', 'aiutanti +4', 900, () => { state.gardenerCap += 4; }),
+  U.gardener(2, 1, 1400),
+  U.plow(2, 1, 1700),
+  U.shop('Braccia forti', '+10 in braccio', 1500, () => { state.capacity += 10; }),
+  { track: 'a0', name: 'Fontana', desc: 'il giardino più bello!', cost: 1200, x: 4.6, z: 5.6, apply: (i) => buildFountain(4.6, 5.6, i) },
   // Spiazzale 4: pollaio
-  U.area(3, 8000),
-  U.at(3, -7.5, 5.2, 'Altre galline', '+3 galline', 9500, (A, i) => addChickens(A, 3, i), 'egg'),
-  U.cashier(3, 11000, 2, 5.4),
-  U.at(3, -1.8, 5.4, 'Contadina', 'raccoglie le uova', 13000, (A, i) => hireGardener(A.coop.bed, i,
+  U.area(3, 2000),
+  U.at(3, -7.5, 5.2, 'Altre galline', '+3 galline', 1500, (A, i) => addChickens(A, 3, i), 'egg'),
+  U.cashier(3, 1800, 2, 5.4),
+  U.at(3, -1.8, 5.4, 'Contadina', 'raccoglie le uova', 2100, (A, i) => hireGardener(A.coop.bed, i,
     { shirt: 0xf5a623, pants: 0x4a5a7a, hat: null, hairStyle: 'long' })),
-  U.at(3, -7.5, 5.2, 'Mangime', 'più uova!', 15500, (A, i) => addFeeder(A, i)),
-  U.at(3, -7.5, 5.2, 'Altre galline', '+3 galline', 18000, (A, i) => addChickens(A, 3, i), 'egg'),
-  U.shop(3, 'Scarpe veloci', 'corri più veloce', 21000, () => { state.speed *= 1.15; }),
+  U.at(3, -7.5, 5.2, 'Mangime', 'più uova!', 2500, (A, i) => addFeeder(A, i)),
+  U.at(3, -7.5, 5.2, 'Altre galline', '+3 galline', 2900, (A, i) => addChickens(A, 3, i), 'egg'),
+  U.shop('Scarpe veloci', 'corri più veloce', 2500, () => { state.speed *= 1.15; }),
   // Spiazzale 5: stalla
-  U.area(4, 26000),
-  U.at(4, -8.5, 7.4, 'Mucca', '+1 mucca', 30000, (A, i) => addCows(A, 1, i), 'milk'),
-  U.cashier(4, 34000, 2, 5.4),
-  U.at(4, -8.7, -4.9, 'Fattore', 'porta il fieno', 39000, (A, i) => hireGardener(A.beds[1], i,
+  U.area(4, 4000),
+  U.at(4, -8.5, 7.4, 'Mucca', '+1 mucca', 3000, (A, i) => addCows(A, 1, i), 'milk'),
+  U.cashier(4, 3400, 2, 5.4),
+  U.at(4, -8.7, -4.9, 'Fattore', 'porta il fieno', 3800, (A, i) => hireGardener(A.beds[1], i,
     { shirt: 0xc0392b, pants: 0x2c3e50, hat: 'straw' })),
-  U.at(4, 1.4, 6.2, 'Nastro', 'latte al bancone', 45000, (A, i) => buildConveyor(A, i)),
-  U.at(4, -8.5, 7.4, 'Mucca', '+1 mucca', 52000, (A, i) => addCows(A, 1, i), 'milk'),
-  U.at(4, -8.7, -4.9, 'Trattore', 'fieno doppio', 60000, (A, i) => buildPlow(A.beds[1], i)),
-  U.shop(4, 'Braccia forti', '+10 in braccio', 68000, () => { state.capacity += 10; }, { x: -8.5, z: czOf(4) + 7.4 }),
+  U.at(4, 1.4, 6.2, 'Nastro', 'latte al bancone', 4300, (A, i) => buildConveyor(A, i)),
+  U.at(4, -8.5, 7.4, 'Mucca', '+1 mucca', 4800, (A, i) => addCows(A, 1, i), 'milk'),
+  U.at(4, -8.7, -4.9, 'Trattore', 'fieno doppio', 5400, (A, i) => buildPlow(A.beds[1], i)),
+  U.shop('Braccia forti', '+10 in braccio', 4000, () => { state.capacity += 10; }),
   // Spiazzale 6: pasticceria
-  U.area(5, 80000),
-  U.cashier(5, 92000, 2, 5.4),
-  U.at(5, -1.8, 5.4, 'Pasticcere', 'porta le torte', 105000, (A, i) => hireChef(A, i)),
-  U.at(5, -11.2, 4.2, 'Forno veloce', 'torte più veloci', 120000, (A, i) => upgradeOven(A, i), 'cake'),
-  U.at(5, -5.4, -3.6, 'Furgoncino', 'porta uova e latte', 140000, (A, i) => buildVan(A, i)),
-  U.shop(5, 'Cesti grandi', 'aiutanti +4', 160000, () => { state.gardenerCap += 4; }),
+  U.area(5, 7000),
+  U.cashier(5, 5500, 2, 5.4),
+  U.at(5, -1.8, 5.4, 'Pasticcere', 'porta le torte', 6200, (A, i) => hireChef(A, i)),
+  U.at(5, -11.2, 4.2, 'Forno veloce', 'torte più veloci', 7000, (A, i) => upgradeOven(A, i), 'cake'),
+  U.at(5, -5.4, -3.6, 'Furgoncino', 'porta uova e latte', 8000, (A, i) => buildVan(A, i)),
+  U.shop('Cesti grandi', 'aiutanti +4', 6000, () => { state.gardenerCap += 4; }),
   // Finale: si ricomincia con una stella in più
-  { name: 'Nuovo giardino', desc: 'guadagni +50%', star: true, cost: 250000, ...shopPos(5), apply: () => completeGarden() },
+  { track: 'final', name: 'Nuovo giardino', desc: 'guadagni +50%', star: true, cost: 25000, x: 2.4, z: czOf(5) + 6.8,
+    apply: () => completeGarden() },
 ];
-const getUpgrade = (i) => UPGRADES[i] || null;
+const TRACKS = {};
+for (const u of UPGRADES) {
+  (TRACKS[u.track] ||= []).push(u);
+  u.key = u.track + ':' + (TRACKS[u.track].length - 1);
+}
+const TRACK_IDS = ['area', 'shop', 'final', ...AREA_DEFS.map((_, k) => 'a' + k)];
+const baseDone = (t) => (state.tracks[t] || 0) >= TRACKS[t].length;
+
+// Dopo gli sblocchi base, ogni spiazzale si può migliorare all'infinito (costo che cresce piano)
+const LEVEL_BASE = [150, 400, 800, 1500, 2500, 4000];
+const levelPos = (k) => (k === 4 ? { x: 1.4, z: czOf(k) + 6.2 } : { x: -4.0, z: czOf(k) + 6.6 });
+function levelUpgrade(k) {
+  const lv = state.levels[k] || 0, prod = AREA_PRODUCTS[k];
+  return {
+    track: 'a' + k, key: 'L' + k + ':' + lv, level: true, icon: prod,
+    name: 'Migliora ' + PRODUCTS[prod].name, desc: '+$' + LEVEL_INC[k] + ' · livello ' + (lv + 2),
+    cost: Math.round(LEVEL_BASE[k] * (1 + 0.6 * lv) / 10) * 10, ...levelPos(k),
+    apply: () => { state.levels[k] = lv + 1; areas[k].boost += 0.3; },
+  };
+}
+function nextFor(t) {
+  if (t === 'final') {
+    const all = areas.length === AREA_DEFS.length && TRACK_IDS.every((id) => id === 'final' || baseDone(id));
+    return all ? TRACKS.final[0] : null;
+  }
+  if (t !== 'area' && t[0] === 'a') {
+    const k = +t.slice(1);
+    if (!areas[k]) return null;
+    return baseDone(t) ? levelUpgrade(k) : TRACKS[t][state.tracks[t] || 0];
+  }
+  return baseDone(t) ? null : TRACKS[t][state.tracks[t] || 0];
+}
 
 let fountain = null;
 function buildFountain(x, z, instant) {
@@ -1863,7 +1906,7 @@ function buildFountain(x, z, instant) {
   if (!instant) { popIn(g); burst(x, z, 80); }
 }
 
-let currentPad = null;
+const pads = new Map();   // pista -> pedana visibile
 function drawPad(ctx, w, h, up, remaining) {
   ctx.clearRect(0, 0, w, h);
   roundRect(ctx, 12, 12, w - 24, h - 24, 36);
@@ -1901,9 +1944,7 @@ function drawPad(ctx, w, h, up, remaining) {
   ctx.strokeText(fmt(remaining), 112, 164);
   ctx.fillText(fmt(remaining), 112, 164);
 }
-function spawnPad(index, paid = 0) {
-  const up = getUpgrade(index);
-  if (!up) return;
+function spawnPad(track, up) {
   const c = document.createElement('canvas');
   c.width = c.height = 256;
   const tex = new THREE.CanvasTexture(c);
@@ -1912,38 +1953,50 @@ function spawnPad(index, paid = 0) {
   const pad = makePadMesh(2.5, tex);
   pad.group.position.set(up.x, 0.04, up.z);
   popIn(pad.group);
-  currentPad = { up, index, paid: Math.min(paid, up.cost - 1), canvas: c, tex, ...pad, shown: -1, stand: 0, acc: 0, fx: 0 };
-  redrawPad();
+  const paid = Math.min(state.paid[track] || 0, up.cost - 1);
+  const p = { track, up, paid, canvas: c, tex, ...pad, shown: -1, stand: 0, acc: 0, fx: 0 };
+  pads.set(track, p);
+  redrawPad(p);
 }
-function redrawPad() {
-  const p = currentPad;
+function removePad(p) {
+  scene.remove(p.group);
+  p.tex.dispose();
+  p.mesh.material.dispose();
+  p.mesh.geometry.dispose();
+  pads.delete(p.track);
+}
+// Mostra la pedana successiva di ogni pista
+function refreshPads() {
+  for (const t of TRACK_IDS) {
+    const up = nextFor(t), cur = pads.get(t);
+    if (cur && up && cur.up.key === up.key) continue;
+    if (cur) removePad(cur);
+    if (up) spawnPad(t, up);
+  }
+}
+function redrawPad(p) {
   const rem = p.up.cost - p.paid;
   if (rem === p.shown) return;
   p.shown = rem;
   drawPad(p.canvas.getContext('2d'), 256, 256, p.up, rem);
   p.tex.needsUpdate = true;
 }
-function completePad() {
-  const p = currentPad;
-  scene.remove(p.group);
-  p.tex.dispose();
-  p.mesh.material.dispose();
-  p.mesh.geometry.dispose();
-  currentPad = null;
+function completePad(p) {
+  removePad(p);
+  state.paid[p.track] = 0;
   burst(p.up.x, p.up.z, 60);
   sfx('buy');
-  if (p.up.star) { p.up.apply(false); return; }
   p.up.apply(false);
-  state.stage++;
+  if (p.up.star) return;
+  if (!p.up.level) state.tracks[p.track] = (state.tracks[p.track] || 0) + 1;
   save();
-  setTimeout(() => spawnPad(state.stage), 700);
+  setTimeout(refreshPads, 700);
 }
-function updatePad(dt) {
-  const p = currentPad;
-  if (!p) return;
-  const on = distXZ(player.group.position, p.up.x, p.up.z) < 1.25;
-  p.stand = on ? p.stand + dt : 0;
-  if (p.stand > 0.25 && state.money > 0) {
+function updatePads(dt) {
+  for (const p of [...pads.values()]) {
+    const on = distXZ(player.group.position, p.up.x, p.up.z) < 1.25;
+    p.stand = on ? p.stand + dt : 0;
+    if (p.stand <= 0.25 || state.money <= 0) continue;
     const rate = Math.max(18, p.up.cost / 1.6);
     p.acc += rate * dt;
     let amt = Math.floor(p.acc);
@@ -1952,6 +2005,7 @@ function updatePad(dt) {
     if (amt > 0) {
       state.money -= amt;
       p.paid += amt;
+      state.paid[p.track] = p.paid;
       updateMoney();
       p.fx -= dt;
       if (p.fx <= 0) {
@@ -1963,8 +2017,8 @@ function updatePad(dt) {
         sfx('pay');
       }
     }
-    redrawPad();
-    if (p.paid >= p.up.cost) completePad();
+    redrawPad(p);
+    if (p.paid >= p.up.cost) completePad(p);
   }
 }
 
@@ -2004,15 +2058,19 @@ function nearestTo(pp, list) {
 function updateGuide(t) {
   const pp = player.group.position;
   let target = null, hint = '';
-  const pad = currentPad;
-  const padLeft = pad ? pad.up.cost - pad.paid : Infinity;
-  const tutorial = state.stage < 4;
+  // La pedana che puoi già pagare più vicina a te
+  let pad = null, pd = Infinity;
+  for (const p of pads.values()) {
+    const d = distXZ(pp, p.up.x, p.up.z);
+    if (state.money >= p.up.cost - p.paid && d < pd) { pd = d; pad = p; }
+  }
+  const tutorial = totalBought() < 4;
   const top = playerStack.items[playerStack.count - 1];
   const sellArea = top && areaOfProduct(top.userData.product);
   if (tip && tip.start === undefined) tip.start = t;
   if (tip && t - tip.start < tip.t) {
     target = tip.at; hint = tip.text;
-  } else if (pad && state.money >= padLeft) {
+  } else if (pad) {
     target = pad.up; hint = 'Sblocca: ' + pad.up.name + '!';
   } else if (tutorial && areas[0].cashStack.count > 0) {
     target = areas[0].cash; hint = 'Raccogli i soldi!';
@@ -2023,7 +2081,7 @@ function updateGuide(t) {
   } else if (tutorial) {
     target = nearestTo(pp, plants.filter((p) => p.grown));
     if (target) hint = 'Raccogli i fiori!';
-  } else if (!pad || state.money < padLeft) {
+  } else {
     // Dopo il tutorial: segnala la pila di soldi più grande se è bella alta
     const rich = areas.filter((a) => a.cashStack.count >= 40).sort((a, b) => b.cashStack.count - a.cashStack.count)[0];
     if (rich) target = rich.cash;
@@ -2228,7 +2286,7 @@ function completeGarden() {
   burst(player.group.position.x, player.group.position.z, 120);
   resetting = true;
   try {
-    localStorage.setItem(SAVE_KEY, JSON.stringify({ money: 0, stage: 0, padPaid: 0, stars: state.stars, legacyBonus: 0 }));
+    localStorage.setItem(SAVE_KEY, JSON.stringify({ v: 5, money: 0, stars: state.stars, legacyBonus: 0, tracks: {}, levels: {}, paid: {} }));
   } catch { }
 }
 document.getElementById('newGarden').addEventListener('click', () => location.reload());
@@ -2265,24 +2323,38 @@ addEventListener('pagehide', () => { if (!resetting) save(); });
 // ---------------------------------------------------------------------
 buildArea(0, true);
 const FOUNTAIN_STAGE = UPGRADES.findIndex((u) => u.name === 'Fontana') + 1;
-if (loaded && typeof loaded.stage === 'number') {
+if (loaded) {
   state.money = Math.max(0, loaded.money | 0);
   state.stars = Math.max(0, loaded.stars | 0);
   state.legacyBonus = Math.max(0, loaded.legacyBonus | 0);
-  let stage = loaded.stage;
-  // Salvataggi della versione 2.1: dopo la fontana c'erano solo i "Prezzi più alti" infiniti.
-  // Li teniamo come bonus e si riparte dal quarto spiazzale.
-  if (loaded.legacyBonus === undefined && stage > FOUNTAIN_STAGE) {
-    state.legacyBonus = stage - FOUNTAIN_STAGE;
-    stage = FOUNTAIN_STAGE;
+  if (loaded.tracks) {
+    Object.assign(state.tracks, loaded.tracks);
+    Object.assign(state.levels, loaded.levels || {});
+    Object.assign(state.paid, loaded.paid || {});
+  } else if (typeof loaded.stage === 'number') {
+    // Vecchio salvataggio "in fila": le prime N pedane della lista diventano le piste
+    let stage = loaded.stage;
+    // Versione 2.1: dopo la fontana c'erano solo i "Prezzi più alti" infiniti, tenuti come bonus
+    if (loaded.legacyBonus === undefined && stage > FOUNTAIN_STAGE) {
+      state.legacyBonus = stage - FOUNTAIN_STAGE;
+      stage = FOUNTAIN_STAGE;
+    }
+    stage = Math.min(stage, UPGRADES.length - 1);
+    for (let i = 0; i < stage; i++) state.tracks[UPGRADES[i].track] = (state.tracks[UPGRADES[i].track] || 0) + 1;
+    if (loaded.padPaid && UPGRADES[stage]) state.paid[UPGRADES[stage].track] = loaded.padPaid | 0;
   }
   state.priceBonus += state.legacyBonus;
-  stage = Math.min(stage, UPGRADES.length - 1);
-  for (let i = 0; i < stage; i++) getUpgrade(i).apply(true);
-  state.stage = stage;
+  // Ricostruisce il mondo applicando gli sblocchi nell'ordine della lista
+  const done = {};
+  for (const u of UPGRADES) {
+    if (u.star) continue;
+    const n = done[u.track] || 0;
+    if (n < Math.min(state.tracks[u.track] || 0, TRACKS[u.track].length)) { u.apply(true); done[u.track] = n + 1; }
+  }
+  for (const [k, lv] of Object.entries(state.levels)) if (areas[k]) areas[k].boost += 0.3 * lv;
 }
 updateStars();
-spawnPad(state.stage, loaded ? Math.max(0, loaded.padPaid | 0) : 0);
+refreshPads();
 updateMoney();
 setInterval(() => { if (!paused) save(); }, 4000);
 
@@ -2302,7 +2374,7 @@ function frame() {
     updateGardeners(dt);
     updateFarm(dt);
     for (const A of areas) { updateCustomers(A, dt); updateSelling(A, dt); }
-    updatePad(dt);
+    updatePads(dt);
     updateGuide(elapsed);
     if (fountain) fountain.userData.jet.scale.y = 1 + Math.sin(elapsed * 8) * 0.12;
   }
@@ -2321,5 +2393,5 @@ frame();
 
 // Utile per i test automatici
 window.__game = {
-  debug, state, player, plants, areas, playerStack, stations, outputs, get pad() { return currentPad; },
+  debug, state, player, plants, areas, playerStack, stations, outputs, pads,
 };

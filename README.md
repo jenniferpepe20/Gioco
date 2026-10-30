@@ -14,6 +14,11 @@ soldi per far crescere il tuo giardino.
   in testa alla fila. La nuvoletta 🌷 indica quanti fiori vuole.
 - **Incassa**: passa sopra la pila di banconote accanto al bancone.
 - **Sblocca**: stai sopra le pedane azzurre con il prezzo per pagarle un po' alla volta.
+  Ci sono più pedane insieme (una per ogni spiazzale, una per aprire il prossimo
+  spiazzale e una per i potenziamenti): scegli tu cosa comprare.
+- **Migliora**: quando uno spiazzale ha tutti i suoi sblocchi compare la pedana
+  "Migliora", che alza il prezzo di vendita di quel prodotto. Si può ripetere all'infinito,
+  così tutti gli spiazzali continuano a crescere, anche i primi.
 
 ### Progressione
 
@@ -21,7 +26,7 @@ Il giardino è diviso in **spiazzali**, ognuno con il suo prodotto, il suo banco
 
 **I fiori** (come nella pubblicità):
 1. 🌹 **Rose** ($2): lo spiazzale iniziale
-2. 🌼 **Margherite** ($3): si apre il cancello in alto
+2. 🌼 **Margherite** ($3): si apre il cancello in alto (spiazzale da $250)
 3. 🍓 **Fragole** ($5): vendute in cassette
 
 Qui sblocchi la seconda aiuola e la **cassiera**, poi per ogni aiuola il **giardiniere**
